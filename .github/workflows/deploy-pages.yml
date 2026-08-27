@@ -27,6 +27,11 @@ jobs:
         uses: actions/configure-pages@v5
         with:
           enablement: true
+      - name: Assemble Godot game files
+        run: |
+          cat index.wasm.part.* > index.wasm
+          cat index.pck.part.* > index.pck
+          rm index.wasm.part.* index.pck.part.*
       - name: Upload site
         uses: actions/upload-pages-artifact@v3
         with:
