@@ -107,39 +107,6 @@ body {
 			<div id="status-notice"></div>
 		</div>
 
-		<script>
-const nativeFetch = window.fetch.bind(window);
-
-async function fetchChunkedFile(baseName, partCount, contentType) {
-	const names = Array.from({ length: partCount }, (_, index) => `${baseName}.part.${String(index).padStart(3, '0')}`);
-	const responses = await Promise.all(names.map((name) => nativeFetch(name)));
-	const failed = responses.find((response) => !response.ok);
-	if (failed) {
-		throw new Error(`Failed loading ${baseName} game data`);
-	}
-	const parts = await Promise.all(responses.map((response) => response.arrayBuffer()));
-	const size = parts.reduce((total, part) => total + part.byteLength, 0);
-	return new Response(new Blob(parts, { type: contentType }), {
-		status: 200,
-		headers: {
-			'Content-Type': contentType,
-			'Content-Length': String(size),
-		},
-	});
-}
-
-window.fetch = function (input, init) {
-	const url = typeof input === 'string' ? input : input.url;
-	const path = url.split('?')[0];
-	if (path.endsWith('index.wasm')) {
-		return fetchChunkedFile('index.wasm', 48, 'application/wasm');
-	}
-	if (path.endsWith('index.pck')) {
-		return fetchChunkedFile('index.pck', 18, 'application/octet-stream');
-	}
-	return nativeFetch(input, init);
-};
-		</script>
 		<script src="index.js"></script>
 		<script>
 const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"ensureCrossOriginIsolationHeaders":false,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":13139792,"index.wasm":35376909},"focusCanvas":true,"gdextensionLibs":[]};
