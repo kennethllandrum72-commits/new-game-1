@@ -1,73 +1,243 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>Survival Island</title>
-<style>
-  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-  html,body{margin:0;height:100%;background:#0d1b14;color:#fff;font-family:Arial,Helvetica,sans-serif;overflow:hidden}
-  #game{position:relative;width:100vw;height:100vh;background:linear-gradient(#79bfe6 0 42%,#4b9b57 42% 100%);overflow:hidden;touch-action:none}
-  #sun{position:absolute;right:8%;top:8%;width:54px;height:54px;border-radius:50%;background:#ffd75a;box-shadow:0 0 28px #ffd75a}
-  .cloud{position:absolute;color:#fff;font-size:34px;opacity:.9}
-  #ground{position:absolute;left:0;right:0;bottom:0;height:58%;background:linear-gradient(#66a95d,#3f7e49)}
-  .tree,.rock,.berry{position:absolute;user-select:none}
-  .tree{font-size:52px}.rock{font-size:35px}.berry{font-size:36px}
-  #player{position:absolute;left:50%;top:55%;transform:translate(-50%,-50%);font-size:42px;z-index:5;filter:drop-shadow(0 3px 2px #0008)}
-  #hud{position:absolute;left:8px;right:8px;top:max(8px,env(safe-area-inset-top));display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;z-index:10}
-  .stat{background:#0009;border:1px solid #ffffff33;border-radius:10px;padding:6px 8px;font-size:12px}
-  .bar{height:6px;background:#333;border-radius:8px;margin-top:4px;overflow:hidden}.fill{height:100%;background:#fff}
-  #resources{position:absolute;top:82px;left:8px;background:#0009;padding:7px 10px;border-radius:10px;font-size:13px;z-index:10}
-  #message{position:absolute;top:118px;left:50%;transform:translateX(-50%);background:#000b;padding:7px 12px;border-radius:14px;font-size:13px;z-index:10;opacity:0;transition:.2s;white-space:nowrap}
-  #controls{position:absolute;left:16px;bottom:max(18px,env(safe-area-inset-bottom));width:138px;height:138px;z-index:20}
-  .move{position:absolute;width:46px;height:46px;border-radius:50%;border:1px solid #ffffff55;background:#0008;color:#fff;font-size:23px;font-weight:bold}
-  #up{left:46px;top:0}#down{left:46px;bottom:0}#left{left:0;top:46px}#right{right:0;top:46px}
-  #actions{position:absolute;right:14px;bottom:max(18px,env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:8px;z-index:20}
-  .action{min-width:102px;border:0;border-radius:16px;padding:12px 14px;background:#142b1ddd;color:#fff;font-weight:700;box-shadow:0 2px 5px #0008;border:1px solid #ffffff44}
-  #save{position:absolute;right:10px;top:88px;z-index:20;border:0;border-radius:10px;padding:8px 11px;background:#0009;color:#fff}
-  #night{position:absolute;inset:0;background:#081025;opacity:0;pointer-events:none;z-index:7;transition:opacity 2s}
-  #title{position:absolute;left:50%;bottom:6px;transform:translateX(-50%);font-size:11px;opacity:.65;z-index:1}
-</style>
-</head>
-<body>
-<div id="game">
-  <div id="sun"></div><div class="cloud" style="left:14%;top:13%">☁️</div><div class="cloud" style="left:58%;top:19%">☁️</div>
-  <div id="ground"></div>
-  <div class="tree" style="left:10%;top:44%">🌲</div><div class="tree" style="left:75%;top:47%">🌳</div><div class="tree" style="left:30%;top:70%">🌲</div><div class="tree" style="left:84%;top:72%">🌳</div>
-  <div class="rock" style="left:18%;top:63%">🪨</div><div class="rock" style="left:65%;top:66%">🪨</div><div class="rock" style="left:47%;top:81%">🪨</div>
-  <div class="berry" style="left:57%;top:52%">🫐</div><div class="berry" style="left:7%;top:78%">🫐</div>
-  <div id="player">🧍</div>
-  <div id="night"></div>
-  <div id="hud">
-    <div class="stat">❤️ Health <div class="bar"><div class="fill" id="healthBar" style="width:100%"></div></div></div>
-    <div class="stat">🍗 Hunger <div class="bar"><div class="fill" id="hungerBar" style="width:100%"></div></div></div>
-    <div class="stat">💧 Thirst <div class="bar"><div class="fill" id="thirstBar" style="width:100%"></div></div></div>
-  </div>
-  <div id="resources">🪵 <span id="wood">0</span> &nbsp; 🪨 <span id="stone">0</span> &nbsp; 🫐 <span id="food">0</span> &nbsp; Day <span id="day">1</span></div>
-  <button id="save">Save</button>
-  <div id="message"></div>
-  <div id="controls"><button class="move" id="up">▲</button><button class="move" id="left">◀</button><button class="move" id="right">▶</button><button class="move" id="down">▼</button></div>
-  <div id="actions"><button class="action" id="gather">Gather</button><button class="action" id="eat">Eat Berry</button><button class="action" id="drink">Drink</button></div>
-  <div id="title">SURVIVAL ISLAND • WEB BUILD</div>
-</div>
-<script>
-const player=document.getElementById('player'),game=document.getElementById('game');
-let state={x:50,y:55,health:100,hunger:100,thirst:100,wood:0,stone:0,food:0,day:1,tick:0};
-const saved=localStorage.getItem('survivalGameSave'); if(saved){try{state={...state,...JSON.parse(saved)}}catch(e){}}
-function render(){player.style.left=state.x+'%';player.style.top=state.y+'%';
- healthBar.style.width=state.health+'%';hungerBar.style.width=state.hunger+'%';thirstBar.style.width=state.thirst+'%';
- wood.textContent=state.wood;stone.textContent=state.stone;food.textContent=state.food;day.textContent=state.day;
- night.style.opacity=(state.tick%120>80)?'.45':'0';}
-function move(dx,dy){state.x=Math.max(4,Math.min(96,state.x+dx));state.y=Math.max(45,Math.min(92,state.y+dy));render()}
-function bind(id,dx,dy){const b=document.getElementById(id);let t;const start=e=>{e.preventDefault();move(dx,dy);t=setInterval(()=>move(dx,dy),100)};const end=()=>clearInterval(t);b.addEventListener('pointerdown',start);b.addEventListener('pointerup',end);b.addEventListener('pointerleave',end)}
-bind('up',0,-2);bind('down',0,2);bind('left',-2,0);bind('right',2,0);
-function msg(t){message.textContent=t;message.style.opacity=1;clearTimeout(msg.t);msg.t=setTimeout(()=>message.style.opacity=0,1300)}
-gather.onclick=()=>{const r=Math.random();if(r<.45){state.wood+=2;msg('+2 wood')}else if(r<.8){state.stone+=1;msg('+1 stone')}else{state.food+=2;msg('+2 berries')}render()};
-eat.onclick=()=>{if(state.food<1)return msg('No berries');state.food--;state.hunger=Math.min(100,state.hunger+28);msg('Ate berries');render()};
-drink.onclick=()=>{state.thirst=Math.min(100,state.thirst+35);msg('Drank fresh water');render()};
-save.onclick=()=>{localStorage.setItem('survivalGameSave',JSON.stringify(state));msg('Game saved')};
-setInterval(()=>{state.tick++;state.hunger=Math.max(0,state.hunger-.18);state.thirst=Math.max(0,state.thirst-.27);if(!state.hunger||!state.thirst)state.health=Math.max(0,state.health-.5);if(state.tick%120===0)state.day++;render()},1000);
-render();
-</script>
-</body>
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, viewport-fit=cover">
+		<meta name="apple-mobile-web-app-capable" content="yes">
+		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+		<title>Wildlands Survival 3D</title>
+		<style>
+html, body, #canvas {
+	margin: 0;
+	padding: 0;
+	border: 0;
+}
+
+html, body {
+	position: fixed;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	height: 100dvh;
+}
+
+body {
+	color: white;
+	background-color: black;
+	overflow: hidden;
+	touch-action: none;
+}
+
+#canvas {
+	display: block;
+	width: 100% !important;
+	height: 100% !important;
+}
+
+#canvas:focus {
+	outline: none;
+}
+
+#status, #status-splash, #status-progress {
+	position: absolute;
+	left: 0;
+	right: 0;
+}
+
+#status, #status-splash {
+	top: 0;
+	bottom: 0;
+}
+
+#status {
+	background-color: #242424;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+	visibility: hidden;
+}
+
+#status-splash {
+	max-height: 100%;
+	max-width: 100%;
+	margin: auto;
+}
+
+#status-progress, #status-notice {
+	display: none;
+}
+
+#status-progress {
+	bottom: 10%;
+	width: 50%;
+	margin: 0 auto;
+}
+
+#status-notice {
+	background-color: #5b3943;
+	border-radius: 0.5rem;
+	border: 1px solid #9b3943;
+	color: #e0e0e0;
+	font-family: 'Noto Sans', 'Droid Sans', Arial, sans-serif;
+	line-height: 1.3;
+	margin: 0 2rem;
+	overflow: hidden;
+	padding: 1rem;
+	text-align: center;
+	z-index: 1;
+}
+		</style>
+		<link id="-gd-engine-icon" rel="icon" type="image/png" href="index.icon.png" />
+<link rel="apple-touch-icon" href="index.apple-touch-icon.png"/>
+
+	</head>
+	<body>
+		<canvas id="canvas">
+			Your browser does not support the canvas tag.
+		</canvas>
+
+		<noscript>
+			Your browser does not support JavaScript.
+		</noscript>
+
+		<div id="status">
+			<img id="status-splash" src="index.png" alt="">
+			<progress id="status-progress"></progress>
+			<div id="status-notice"></div>
+		</div>
+
+		<script>
+const nativeFetch = window.fetch.bind(window);
+
+async function fetchChunkedFile(baseName, partCount, contentType) {
+	const names = Array.from({ length: partCount }, (_, index) => `${baseName}.part.${String(index).padStart(3, '0')}`);
+	const responses = await Promise.all(names.map((name) => nativeFetch(name)));
+	const failed = responses.find((response) => !response.ok);
+	if (failed) {
+		throw new Error(`Failed loading ${baseName} game data`);
+	}
+	const parts = await Promise.all(responses.map((response) => response.arrayBuffer()));
+	const size = parts.reduce((total, part) => total + part.byteLength, 0);
+	return new Response(new Blob(parts, { type: contentType }), {
+		status: 200,
+		headers: {
+			'Content-Type': contentType,
+			'Content-Length': String(size),
+		},
+	});
+}
+
+window.fetch = function (input, init) {
+	const url = typeof input === 'string' ? input : input.url;
+	const path = url.split('?')[0];
+	if (path.endsWith('index.wasm')) {
+		return fetchChunkedFile('index.wasm', 48, 'application/wasm');
+	}
+	if (path.endsWith('index.pck')) {
+		return fetchChunkedFile('index.pck', 18, 'application/octet-stream');
+	}
+	return nativeFetch(input, init);
+};
+		</script>
+		<script src="index.js"></script>
+		<script>
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"ensureCrossOriginIsolationHeaders":false,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":13139792,"index.wasm":35376909},"focusCanvas":true,"gdextensionLibs":[]};
+const GODOT_THREADS_ENABLED = false;
+const engine = new Engine(GODOT_CONFIG);
+
+(function () {
+	const statusOverlay = document.getElementById('status');
+	const statusProgress = document.getElementById('status-progress');
+	const statusNotice = document.getElementById('status-notice');
+
+	let initializing = true;
+	let statusMode = '';
+
+	function setStatusMode(mode) {
+		if (statusMode === mode || !initializing) {
+			return;
+		}
+		if (mode === 'hidden') {
+			statusOverlay.remove();
+			initializing = false;
+			return;
+		}
+		statusOverlay.style.visibility = 'visible';
+		statusProgress.style.display = mode === 'progress' ? 'block' : 'none';
+		statusNotice.style.display = mode === 'notice' ? 'block' : 'none';
+		statusMode = mode;
+	}
+
+	function setStatusNotice(text) {
+		while (statusNotice.lastChild) {
+			statusNotice.removeChild(statusNotice.lastChild);
+		}
+		const lines = text.split('\n');
+		lines.forEach((line) => {
+			statusNotice.appendChild(document.createTextNode(line));
+			statusNotice.appendChild(document.createElement('br'));
+		});
+	}
+
+	function displayFailureNotice(err) {
+		console.error(err);
+		if (err instanceof Error) {
+			setStatusNotice(err.message);
+		} else if (typeof err === 'string') {
+			setStatusNotice(err);
+		} else {
+			setStatusNotice('An unknown error occured');
+		}
+		setStatusMode('notice');
+		initializing = false;
+	}
+
+	const missing = Engine.getMissingFeatures({
+		threads: GODOT_THREADS_ENABLED,
+	});
+
+	if (missing.length !== 0) {
+		if (GODOT_CONFIG['serviceWorker'] && GODOT_CONFIG['ensureCrossOriginIsolationHeaders'] && 'serviceWorker' in navigator) {
+			// There's a chance that installing the service worker would fix the issue
+			Promise.race([
+				navigator.serviceWorker.getRegistration().then((registration) => {
+					if (registration != null) {
+						return Promise.reject(new Error('Service worker already exists.'));
+					}
+					return registration;
+				}).then(() => engine.installServiceWorker()),
+				// For some reason, `getRegistration()` can stall
+				new Promise((resolve) => {
+					setTimeout(() => resolve(), 2000);
+				}),
+			]).catch((err) => {
+				console.error('Error while registering service worker:', err);
+			}).then(() => {
+				window.location.reload();
+			});
+		} else {
+			// Display the message as usual
+			const missingMsg = 'Error\nThe following features required to run Godot projects on the Web are missing:\n';
+			displayFailureNotice(missingMsg + missing.join('\n'));
+		}
+	} else {
+		setStatusMode('progress');
+		engine.startGame({
+			'onProgress': function (current, total) {
+				if (current > 0 && total > 0) {
+					statusProgress.value = current;
+					statusProgress.max = total;
+				} else {
+					statusProgress.removeAttribute('value');
+					statusProgress.removeAttribute('max');
+				}
+			},
+		}).then(() => {
+			setStatusMode('hidden');
+		}, displayFailureNotice);
+	}
+}());
+		</script>
+	</body>
 </html>
