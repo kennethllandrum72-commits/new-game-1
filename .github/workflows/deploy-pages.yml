@@ -30,7 +30,12 @@ jobs:
           enablement: true
       - name: Assemble and clean Godot game files
         run: |
-          cat index.wasm.part.* > index.wasm
+          cat index.wasm.part.* > index.wasm.original
+          curl -L --retry 3 -o binaryen.tar.gz https://github.com/WebAssembly/binaryen/releases/download/version_132/binaryen-version_132-x86_64-linux.tar.gz
+          mkdir binaryen
+          tar -xzf binaryen.tar.gz -C binaryen --strip-components=1
+          binaryen/bin/wasm-opt --enable-bulk-memory --enable-exception-handling -Oz --strip-debug index.wasm.original -o index.wasm
+          test "$(stat -c%s index.wasm)" = "32916861"
           cat index.pck.part.* > index.pck.original
           python3 - <<'PY'
           from pathlib import Path
@@ -68,7 +73,7 @@ jobs:
           print(f"Clean package: {count} entries -> {len(entries)} entries, {len(output)} bytes")
           PY
           test "$(stat -c%s index.pck)" = "12349926"
-          rm index.pck.original index.wasm.part.* index.pck.part.*
+          rm -rf index.pck.original index.wasm.original index.wasm.part.* index.pck.part.* binaryen binaryen.tar.gz
       - name: Upload site
         uses: actions/upload-pages-artifact@v3
         with:
