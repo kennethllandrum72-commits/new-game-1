@@ -27,11 +27,47 @@ jobs:
         uses: actions/configure-pages@v5
         with:
           enablement: true
-      - name: Assemble Godot game files
+      - name: Assemble and clean Godot game files
         run: |
           cat index.wasm.part.* > index.wasm
-          cat index.pck.part.* > index.pck
-          rm index.wasm.part.* index.pck.part.*
+          cat index.pck.part.* > index.pck.original
+          python3 - <<'PY'
+          from pathlib import Path
+          import struct
+          src = Path("index.pck.original").read_bytes()
+          pos = 4
+          version = src[pos:pos+16]; pos += 16
+          flags = struct.unpack_from("<I", src, pos)[0]; pos += 4
+          pos += 8
+          reserved = src[pos:pos+64]; pos += 64
+          count = struct.unpack_from("<I", src, pos)[0]; pos += 4
+          entries = []
+          for _ in range(count):
+              length = struct.unpack_from("<I", src, pos)[0]; pos += 4
+              path = src[pos:pos+length]; pos += length
+              offset, size = struct.unpack_from("<QQ", src, pos); pos += 16
+              digest = src[pos:pos+16]; pos += 16
+              entry_flags = struct.unpack_from("<I", src, pos)[0]; pos += 4
+              entries.append((path, offset, size, digest, entry_flags))
+          last = {entry[0]: index for index, entry in enumerate(entries)}
+          entries = [entry for index, entry in enumerate(entries) if last[entry[0]] == index]
+          directory_size = 100 + sum(40 + len(entry[0]) for entry in entries)
+          base = (directory_size + 15) // 16 * 16
+          output = bytearray(b"GDPC" + version + struct.pack("<I", flags) + struct.pack("<Q", base) + reserved + struct.pack("<I", len(entries)))
+          data = bytearray()
+          current = base
+          for path, offset, size, digest, entry_flags in entries:
+              output += struct.pack("<I", len(path)) + path + struct.pack("<QQ", current, size) + digest + struct.pack("<I", entry_flags)
+              data += src[offset:offset+size]
+              data += b"\\0" * ((-len(data)) % 16)
+              current = base + len(data)
+          output += b"\\0" * (base - len(output))
+          output += data
+          Path("index.pck").write_bytes(output)
+          print(f"Clean package: {count} entries -> {len(entries)} entries, {len(output)} bytes")
+          PY
+          test "$(stat -c%s index.pck)" = "12348928"
+          rm index.pck.original index.wasm.part.* index.pck.part.*
       - name: Upload site
         uses: actions/upload-pages-artifact@v3
         with:
