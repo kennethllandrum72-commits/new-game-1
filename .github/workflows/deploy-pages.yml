@@ -30,6 +30,8 @@ jobs:
           enablement: true
       - name: Assemble and clean Godot game files
         run: |
+          curl -L --retry 3 -o mobile/three.module.js https://unpkg.com/three@0.160.0/build/three.module.js
+          test "$(stat -c%s mobile/three.module.js)" -gt "1000000"
           cat index.wasm.part.* > index.wasm.original
           curl -L --retry 3 -o binaryen.tar.gz https://github.com/WebAssembly/binaryen/releases/download/version_132/binaryen-version_132-x86_64-linux.tar.gz
           mkdir binaryen
