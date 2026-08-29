@@ -1,0 +1,63 @@
+name: TrailRide iOS Cloud Build
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'trailride/**'
+      - 'trailride-native/**'
+      - '.github/workflows/trailride-ios.yml'
+
+jobs:
+  ios-build-check:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: trailride-native
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: trailride-native/package-lock.json
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Prepare TrailRide web bundle
+        run: npm run prepare:web
+
+      - name: Generate iOS project
+        run: npx cap add ios
+
+      - name: Sync Capacitor
+        run: npx cap sync ios
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Build iPhone Simulator app
+        run: |
+          xcodebuild \
+            -workspace ios/App/App.xcworkspace \
+            -scheme App \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Package generated iOS project
+        run: zip -r TrailRide-iOS-Project.zip ios >/dev/null
+
+      - name: Upload iOS project artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TrailRide-iOS-Project
+          path: trailride-native/TrailRide-iOS-Project.zip
+          retention-days: 14
