@@ -1,0 +1,48 @@
+workflows:
+  trailride-ios-testflight:
+    name: TrailRide iOS TestFlight
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    integrations:
+      app_store_connect: TrailRide App Store Connect
+    environment:
+      node: 22
+      xcode: latest
+      cocoapods: default
+      vars:
+        BUNDLE_ID: com.trailride.nearme
+        XCODE_WORKSPACE: trailride-native/ios/App/App.xcworkspace
+        XCODE_SCHEME: App
+    scripts:
+      - name: Install dependencies
+        script: |
+          cd trailride-native
+          npm install
+      - name: Prepare web bundle
+        script: |
+          cd trailride-native
+          npm run prepare:web
+      - name: Generate and sync iOS project
+        script: |
+          cd trailride-native
+          if [ ! -d ios ]; then
+            npx cap add ios
+          fi
+          npx cap sync ios
+      - name: Set up iOS code signing
+        script: |
+          app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create
+          keychain add-certificates
+          xcode-project use-profiles
+      - name: Build IPA
+        script: |
+          xcode-project build-ipa \
+            --workspace "$XCODE_WORKSPACE" \
+            --scheme "$XCODE_SCHEME"
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
