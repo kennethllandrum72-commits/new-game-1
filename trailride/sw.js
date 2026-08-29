@@ -1,1 +1,37 @@
-const CACHE='trailride-v3';const ASSETS=['./','index.html','styles.css','app.js'];self.addEventListener('install',e=>{self.skipWaiting();e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)))});self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k))))));self.addEventListener('fetch',e=>e.respondWith(fetch(e.request).then(r=>{const c=r.clone();caches.open(CACHE).then(x=>x.put(e.request,c));return r}).catch(()=>caches.match(e.request))));
+const CACHE='trailride-v14';
+const SHELL=['./','index.html','styles.css','rides.css','app.js','rides.js','manifest.webmanifest','icon.svg'];
+self.addEventListener('install',event=>{
+  self.skipWaiting();
+  event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(SHELL)));
+});
+self.addEventListener('activate',event=>{
+  event.waitUntil(Promise.all([
+    caches.keys().then(keys=>Promise.all(keys.filter(key=>key!==CACHE).map(key=>caches.delete(key)))),
+    self.clients.claim()
+  ]));
+});
+self.addEventListener('fetch',event=>{
+  const req=event.request;
+  if(req.method!=='GET')return;
+  const url=new URL(req.url);
+  const liveHosts=['api.open-meteo.com','air-quality-api.open-meteo.com','overpass-api.de','nominatim.openstreetmap.org'];
+  if(liveHosts.includes(url.hostname)){
+    event.respondWith(fetch(req));
+    return;
+  }
+  if(req.mode==='navigate'){
+    event.respondWith(fetch(req).then(res=>{
+      const copy=res.clone();
+      caches.open(CACHE).then(cache=>cache.put('./',copy));
+      return res;
+    }).catch(()=>caches.match('./')));
+    return;
+  }
+  event.respondWith(caches.match(req).then(hit=>hit||fetch(req).then(res=>{
+    if(url.origin===self.location.origin){
+      const copy=res.clone();
+      caches.open(CACHE).then(cache=>cache.put(req,copy));
+    }
+    return res;
+  })));
+});
