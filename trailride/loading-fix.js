@@ -1,9 +1,5 @@
 (()=>{
  const $=id=>document.getElementById(id);
- const s=document.createElement('script');
- s.src='safe-trails.js?v=24';
- s.async=false;
- document.head.appendChild(s);
  function message(){
   const wt=$('weatherTitle'),ws=$('weatherSummary'),rr=$('rainHistory'),aq=$('airQualitySummary'),bw=$('bestWindow');
   if(wt?.textContent.includes('Loading')) wt.textContent='Live weather unavailable';
