@@ -1,5 +1,7 @@
 (()=>{
  const $=id=>document.getElementById(id);
+ if(!document.querySelector('link[href*="trail-drying.css"]')){const l=document.createElement('link');l.rel='stylesheet';l.href='trail-drying.css?v=29';document.head.appendChild(l)}
+ if(!document.querySelector('script[src*="trail-drying.js"]')){const s=document.createElement('script');s.src='trail-drying.js?v=29';s.defer=true;document.head.appendChild(s)}
  function message(){
   const wt=$('weatherTitle'),ws=$('weatherSummary'),rr=$('rainHistory'),aq=$('airQualitySummary'),bw=$('bestWindow');
   if(wt?.textContent.includes('Loading')) wt.textContent='Live weather unavailable';
