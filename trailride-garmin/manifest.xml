@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<iq:manifest xmlns:iq="http://www.garmin.com/xml/connectiq" version="3">
+  <iq:application id="4f4f1f4c8c654a83a8bdb674c91b6a03" type="watch-app" name="@Strings.AppName" entry="TrailRideApp" launcherIcon="@Drawables.LauncherIcon" minApiLevel="5.2.0">
+    <iq:products>
+      <iq:product id="venu3"/>
+    </iq:products>
+    <iq:permissions>
+      <iq:uses-permission id="Positioning"/>
+      <iq:uses-permission id="Communications"/>
+    </iq:permissions>
+    <iq:languages>
+      <iq:language>eng</iq:language>
+    </iq:languages>
+    <iq:barrels/>
+  </iq:application>
+</iq:manifest>
