@@ -1,7 +1,36 @@
 (()=>{
  const $=id=>document.getElementById(id);
- if(!document.querySelector('link[href*="trail-drying.css"]')){const l=document.createElement('link');l.rel='stylesheet';l.href='trail-drying.css?v=29';document.head.appendChild(l)}
- if(!document.querySelector('script[src*="trail-drying.js"]')){const s=document.createElement('script');s.src='trail-drying.js?v=29';s.defer=true;document.head.appendChild(s)}
+ const weatherIds=['weatherTitle','weatherSummary','rainHistory','airQualitySummary','overallScore','bestWindow','hourlyList'];
+ const snapshot=()=>Object.fromEntries(weatherIds.map(id=>[id,$(id)?.innerHTML]));
+ const restore=s=>weatherIds.forEach(id=>{const el=$(id);if(el&&s[id]!==undefined)el.innerHTML=s[id]});
+ const refreshNew=()=>setTimeout(()=>window.TrailRideWeather?.reload?.(),0);
+
+ // app.js still owns trail discovery/cards, but its legacy weather calculation must
+ // never write the main Ride Conditions or Hourly Planner UI again.
+ if(typeof window.render==='function'){
+   const legacyRender=window.render;
+   window.render=function(...args){
+     const before=snapshot();
+     const result=legacyRender.apply(this,args);
+     restore(before);
+     refreshNew();
+     return result;
+   };
+ }
+
+ // Trail enrichment used to overwrite the main score again after local trail
+ // requests finished. Preserve the score from the new weather engine instead.
+ if(typeof window.enrichTrailConditions==='function'){
+   const legacyEnrich=window.enrichTrailConditions;
+   window.enrichTrailConditions=async function(...args){
+     const score=$('overallScore')?.innerHTML;
+     const result=await legacyEnrich.apply(this,args);
+     if($('overallScore')&&score!==undefined) $('overallScore').innerHTML=score;
+     refreshNew();
+     return result;
+   };
+ }
+
  function message(){
   const wt=$('weatherTitle'),ws=$('weatherSummary'),rr=$('rainHistory'),aq=$('airQualitySummary'),bw=$('bestWindow');
   if(wt?.textContent.includes('Loading')) wt.textContent='Live weather unavailable';
