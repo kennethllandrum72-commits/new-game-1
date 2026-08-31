@@ -1,15 +1,16 @@
 {
   "name": "trailride-native",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Native iOS wrapper for TrailRide",
   "scripts": {
     "prepare:web": "node scripts/prepare-web.mjs",
-    "ios:add": "npm run prepare:web && npx cap add ios",
-    "ios:sync": "npm run prepare:web && npx cap sync ios",
+    "ios:add": "npm run prepare:web && npx cap add ios && node scripts/configure-ios-background-location.mjs",
+    "ios:sync": "npm run prepare:web && npx cap sync ios && node scripts/configure-ios-background-location.mjs",
     "ios:open": "npx cap open ios"
   },
   "dependencies": {
+    "@capacitor-community/background-geolocation": "^1.2.26",
     "@capacitor/app": "^8.1.1",
     "@capacitor/browser": "^8.0.1",
     "@capacitor/core": "^8.5.0",
