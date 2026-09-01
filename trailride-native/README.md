@@ -45,3 +45,4 @@ npm run ios:open
 The live GitHub Pages version remains separate and continues to work while the native iOS project is developed.
 
 <!-- Codemagic source refresh marker: 2026-09-01 -->
+<!-- TestFlight location-fix publish marker: 2026-09-01T16:21-04:00 -->
