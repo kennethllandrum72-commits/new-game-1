@@ -9,6 +9,9 @@ workflows:
       node: 22
       xcode: latest
       cocoapods: default
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.trailride.nearme
       vars:
         BUNDLE_ID: com.trailride.nearme
         XCODE_WORKSPACE: trailride-native/ios/App/App.xcodeproj
@@ -31,9 +34,10 @@ workflows:
           npx cap sync ios
       - name: Set up iOS code signing
         script: |
-          app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create
-          keychain add-certificates
-          xcode-project use-profiles
+          xcode-project use-profiles \
+            --project "$XCODE_WORKSPACE" \
+            --archive-method app-store \
+            --code-signing-setup-verbose-logging
       - name: Build IPA
         script: |
           xcode-project build-ipa \
