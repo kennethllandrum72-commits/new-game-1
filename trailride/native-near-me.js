@@ -6,7 +6,7 @@
   const isNative=()=>{try{return !!window.Capacitor?.isNativePlatform?.()}catch{return false}};
   const capGeo=()=>window.Capacitor?.Plugins?.Geolocation||null;
   const timeout=(promise,ms,label='Location timed out')=>Promise.race([
-    promise,
+    Promise.resolve(promise),
     new Promise((_,reject)=>setTimeout(()=>reject(new Error(label)),ms))
   ]);
 
@@ -21,13 +21,24 @@
   async function capacitorPosition(){
     const geo=capGeo();
     if(!geo?.getCurrentPosition)throw new Error('Capacitor geolocation unavailable');
-    try{
-      const perms=await timeout(geo.checkPermissions?.(),3000);
-      if(perms?.location!=='granted'&&perms?.coarseLocation!=='granted'){
-        await timeout(geo.requestPermissions?.({permissions:['location']}),8000,'Location permission timed out');
+
+    let perms=null;
+    try{perms=await timeout(geo.checkPermissions(),2500,'Permission check timed out')}catch(e){console.warn('Location permission check failed',e)}
+
+    const granted=perms?.location==='granted'||perms?.coarseLocation==='granted';
+    if(!granted){
+      try{
+        perms=await timeout(geo.requestPermissions({permissions:['location','coarseLocation']}),10000,'Location permission request timed out');
+      }catch(e){
+        console.warn('Location permission request failed',e);
       }
-    }catch(e){console.warn('Location permission check failed',e)}
-    return normalize(await timeout(geo.getCurrentPosition({enableHighAccuracy:true,timeout:12000,maximumAge:30000}),15000,'Native GPS timed out'));
+    }
+
+    return normalize(await timeout(
+      geo.getCurrentPosition({enableHighAccuracy:true,timeout:10000,maximumAge:60000}),
+      12000,
+      'Native GPS timed out'
+    ));
   }
 
   async function browserPosition(){
@@ -36,9 +47,9 @@
       navigator.geolocation.getCurrentPosition(
         p=>resolve(normalize(p)),
         reject,
-        {enableHighAccuracy:true,timeout:12000,maximumAge:30000}
+        {enableHighAccuracy:true,timeout:10000,maximumAge:60000}
       );
-    }),15000,'Browser GPS timed out');
+    }),12000,'Browser GPS timed out');
   }
 
   async function getPosition(){
@@ -54,6 +65,15 @@
     const label=status(),old=btn.textContent;
     btn.disabled=true;btn.textContent='📍 Finding you…';
     if(label)label.textContent='Getting your current location…';
+
+    const hardStop=setTimeout(()=>{
+      if(btn.disabled){
+        btn.disabled=false;
+        btn.textContent=old||'📍 Near Me';
+        if(label)label.textContent='Location is taking too long. Open iPhone Settings → Privacy & Security → Location Services → TrailRide, allow location access, then try again.';
+      }
+    },26000);
+
     try{
       const p=await getPosition(),c=p.coords;
       mode='near';searchText='';trailData.clear();
@@ -61,14 +81,16 @@
       if(search)search.value='';if(state)state.value='near';
       loc={lat:c.latitude,lon:c.longitude};
       if(label)label.textContent='Near Me: location found. Loading nearby trails…';
-      await refresh();
+      await timeout(refresh(),15000,'Nearby trails took too long to load');
       if(label)label.textContent='Near Me: using your current location.';
       document.getElementById('trailList')?.scrollIntoView({behavior:'smooth',block:'start'});
     }catch(err){
       console.error('TrailRide Near Me location error',err);
-      if(label)label.textContent='Could not get GPS. Check iPhone Settings → Privacy & Security → Location Services → TrailRide, then try again.';
+      if(label)label.textContent='Could not get GPS. Open iPhone Settings → Privacy & Security → Location Services → TrailRide and allow location access, then try again.';
     }finally{
-      btn.disabled=false;btn.textContent=old||'📍 Near Me';
+      clearTimeout(hardStop);
+      btn.disabled=false;
+      btn.textContent=old||'📍 Near Me';
     }
   }
 
