@@ -41,6 +41,7 @@ workflows:
           xcode-project use-profiles \
             --project "$XCODE_WORKSPACE" \
             --archive-method app-store \
+            --custom-export-options='{"testFlightInternalTestingOnly": true}' \
             --code-signing-setup-verbose-logging
       - name: Build IPA
         script: |
@@ -53,4 +54,3 @@ workflows:
     publishing:
       app_store_connect:
         auth: integration
-        submit_to_testflight: true
