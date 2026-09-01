@@ -17,4 +17,5 @@
  function scan(){document.querySelectorAll('#trailList .trail').forEach(enhance);fixDetail()}
  let list=document.getElementById('trailList');if(list)new MutationObserver(scan).observe(list,{childList:true,subtree:true});let detail=document.getElementById('detailOverlay');if(detail)new MutationObserver(fixDetail).observe(detail,{attributes:true,subtree:true,childList:true});scan();
  window.TrailRideMaps={provider:apple?'Apple Maps':'Google Maps'};
+ const near=document.createElement('script');near.src='native-near-me.js?v=43';document.body.appendChild(near);
 })();
