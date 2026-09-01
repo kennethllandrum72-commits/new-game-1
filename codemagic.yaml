@@ -11,7 +11,7 @@ workflows:
       cocoapods: default
       vars:
         BUNDLE_ID: com.trailride.nearme
-        XCODE_WORKSPACE: trailride-native/ios/App/App.xcworkspace
+        XCODE_WORKSPACE: trailride-native/ios/App/App.xcodeproj
         XCODE_SCHEME: App
     scripts:
       - name: Install dependencies
@@ -37,7 +37,7 @@ workflows:
       - name: Build IPA
         script: |
           xcode-project build-ipa \
-            --workspace "$XCODE_WORKSPACE" \
+            --project "$XCODE_WORKSPACE" \
             --scheme "$XCODE_SCHEME"
     artifacts:
       - build/ios/ipa/*.ipa
