@@ -23,7 +23,7 @@ execFileSync(esbuild, [bridgeEntry, '--bundle', '--platform=browser', '--format=
 
 const indexPath = resolve(target, 'index.html');
 let html = readFileSync(indexPath, 'utf8');
-const nativeScripts = '<script src="native-bridge.js?v=44"></script><script src="native-near-me.js?v=44"></script>';
+const nativeScripts = '<script src="native-bridge.js?v=45"></script><script src="native-near-me.js?v=45"></script>';
 html = html.replace(/<script src="native-near-me\.js\?v=\d+"><\/script>/g, '');
 html = html.replace('</body>', `${nativeScripts}</body>`);
 writeFileSync(indexPath, html);
