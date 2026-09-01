@@ -22,29 +22,36 @@
 
   async function capacitorPosition(){
     const geo=capGeo();
-    if(!geo?.getCurrentPosition||!geo?.requestPermissions)throw new Error('Native geolocation bridge unavailable');
-    setStatus(`Location debug: native=yes • bridge=yes • checking permission`);
-    let perms=await timeout(geo.checkPermissions(),5000,'permission check timeout');
-    let state=perms?.location||'unknown';
-    setStatus(`Location debug: native=yes • bridge=yes • permission=${state}`);
+    if(!geo?.getCurrentPosition)throw new Error('Native geolocation bridge unavailable');
 
-    if(state==='prompt'||state==='prompt-with-rationale'||state==='unknown'){
-      setStatus(`Location debug: requesting iOS When In Use permission…`);
-      // Capacitor Geolocation permission alias is "location". Passing only this
-      // alias lets iOS display the standard When In Use authorization sheet.
-      perms=await timeout(geo.requestPermissions({permissions:['location']}),30000,'permission request timeout');
-      state=perms?.location||'unknown';
-      setStatus(`Location debug: permission result=${state}`);
+    let state='unknown';
+    if(geo.checkPermissions){
+      try{
+        const perms=await timeout(geo.checkPermissions(),5000,'permission check timeout');
+        state=perms?.location||'unknown';
+      }catch(e){
+        setStatus(`Location debug: permission check failed • trying GPS directly`);
+      }
     }
-    if(state==='denied')throw new Error('Location permission denied');
+    setStatus(`Location debug: native=yes • bridge=yes • permission=${state} • starting GPS`);
 
-    setStatus(`Location debug: permission=${state} • requesting GPS…`);
-    const pos=await timeout(
-      geo.getCurrentPosition({enableHighAccuracy:false,timeout:30000,maximumAge:60000}),
-      32000,
-      'native GPS timeout'
-    );
-    return normalize(pos);
+    // On iOS, getCurrentPosition itself triggers the system When In Use prompt
+    // when authorization is not yet determined. This avoids the requestPermissions
+    // call that is hanging on this TestFlight install.
+    try{
+      const pos=await timeout(
+        geo.getCurrentPosition({enableHighAccuracy:false,timeout:30000,maximumAge:60000}),
+        32000,
+        'native GPS timeout'
+      );
+      return normalize(pos);
+    }catch(e){
+      const msg=errText(e).toLowerCase();
+      if(msg.includes('denied')||msg.includes('permission')){
+        throw new Error(`iOS location permission denied: ${errText(e)}`);
+      }
+      throw e;
+    }
   }
 
   async function browserPosition(){
