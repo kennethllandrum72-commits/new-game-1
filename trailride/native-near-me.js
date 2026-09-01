@@ -20,16 +20,23 @@
 
   async function capacitorPosition(){
     const geo=capGeo();
-    if(!geo?.getCurrentPosition)throw new Error('Native geolocation bridge unavailable');
+    if(!geo?.getCurrentPosition||!geo?.requestPermissions)throw new Error('Native geolocation bridge unavailable');
 
+    // Near Me is a user gesture. Ask iOS for When In Use authorization here,
+    // not during app startup. This is what causes the native permission sheet.
     let perms=await timeout(geo.checkPermissions(),4000,'Permission check timed out');
-    if(perms?.location!=='granted'){
-      perms=await timeout(geo.requestPermissions({permissions:['location']}),15000,'Location permission request timed out');
+    if(perms?.location==='prompt'||perms?.location==='prompt-with-rationale'||!perms?.location){
+      perms=await timeout(geo.requestPermissions({permissions:['location']}),20000,'Location permission request timed out');
     }
     if(perms?.location==='denied')throw new Error('Location permission denied');
+    if(perms?.location!=='granted'){
+      // Some iOS/plugin combinations finalize authorization when the first
+      // location request is made, so continue to getCurrentPosition.
+      console.info('Location permission state before GPS:',perms?.location);
+    }
 
     return normalize(await timeout(
-      geo.getCurrentPosition({enableHighAccuracy:false,timeout:20000,maximumAge:60000}),
+      geo.getCurrentPosition({enableHighAccuracy:true,timeout:20000,maximumAge:30000}),
       22000,
       'Native GPS timed out'
     ));
@@ -40,7 +47,7 @@
       if(!navigator.geolocation)return reject(new Error('Browser geolocation unavailable'));
       navigator.geolocation.getCurrentPosition(
         p=>resolve(normalize(p)),reject,
-        {enableHighAccuracy:false,timeout:15000,maximumAge:60000}
+        {enableHighAccuracy:true,timeout:15000,maximumAge:30000}
       );
     }),17000,'Browser GPS timed out');
   }
