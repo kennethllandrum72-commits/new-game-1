@@ -42,6 +42,23 @@
     ));
   }
 
+  async function requestNativePermission(){
+    if(!isNative())return;
+    const geo=capGeo();
+    if(!geo?.checkPermissions||!geo?.requestPermissions)return;
+    try{
+      let perms=await timeout(geo.checkPermissions(),4000,'Permission check timed out');
+      if(perms?.location==='prompt'||perms?.location==='prompt-with-rationale'||!perms?.location){
+        perms=await timeout(geo.requestPermissions({permissions:['location']}),20000,'Location permission request timed out');
+      }
+      if(status()&&perms?.location==='granted'){
+        status().textContent='Location allowed. Tap Near Me to find nearby trails.';
+      }
+    }catch(err){
+      console.warn('Initial iPhone location permission request failed',err);
+    }
+  }
+
   async function browserPosition(){
     return timeout(new Promise((resolve,reject)=>{
       if(!navigator.geolocation)return reject(new Error('Browser geolocation unavailable'));
@@ -88,5 +105,10 @@
   }
 
   btn.onclick=useLocation;
-  window.TrailRideNearMe={useLocation,isNative,getPosition};
+  window.TrailRideNearMe={useLocation,isNative,getPosition,requestNativePermission};
+
+  // Ask while the native app is visible so iOS registers TrailRide in
+  // Location Services and displays the When In Use permission sheet.
+  if(isNative())setTimeout(requestNativePermission,500);
+  window.addEventListener('trailride:native-ready',()=>setTimeout(requestNativePermission,100));
 })();
