@@ -10,34 +10,23 @@ if(!existsSync(plist)){
 
 let s=readFileSync(plist,'utf8');
 
-function addPlistEntry(key, xml){
-  if(!s.includes(`<key>${key}</key>`)){
-    s=s.replace(/<\/dict>/,`${xml}\n</dict>`);
-  }
+// Near Me only needs foreground When-In-Use authorization. Remove background
+// and Always declarations while we establish the normal iOS permission flow.
+s=s.replace(/\s*<key>NSLocationAlwaysAndWhenInUseUsageDescription<\/key>\s*<string>[\s\S]*?<\/string>/g,'');
+s=s.replace(/\s*<key>NSLocationAlwaysUsageDescription<\/key>\s*<string>[\s\S]*?<\/string>/g,'');
+s=s.replace(/\s*<key>UIBackgroundModes<\/key>\s*<array>\s*<string>location<\/string>\s*<\/array>/g,'');
+
+function setString(key,value){
+  const re=new RegExp(`<key>${key}<\\/key>\\s*<string>[\\s\\S]*?<\\/string>`);
+  const xml=`<key>${key}</key>\n\t<string>${value}</string>`;
+  if(re.test(s)) s=s.replace(re,xml);
+  else s=s.replace(/<\/dict>/,`\t${xml}\n</dict>`);
 }
 
-// Required by @capacitor/geolocation on iOS. This is the permission Near Me
-// requests when the user taps the button.
-addPlistEntry(
-  'NSLocationWhenInUseUsageDescription',
-  '\n\t<key>NSLocationWhenInUseUsageDescription</key>\n\t<string>TrailRide uses your location when you tap Near Me to find trails and cycling routes near you.</string>'
-);
-
-// Keep the existing background-location declarations for activity recording.
-addPlistEntry(
-  'NSLocationAlwaysAndWhenInUseUsageDescription',
-  '\n\t<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>\n\t<string>TrailRide uses your location while the app is in the background or your iPhone is locked so your ride, walk, run, or hike can continue recording.</string>'
-);
-addPlistEntry(
-  'UIBackgroundModes',
-  '\n\t<key>UIBackgroundModes</key>\n\t<array>\n\t\t<string>location</string>\n\t</array>'
-);
-
+setString('NSLocationWhenInUseUsageDescription','TrailRide uses your location when you tap Near Me to find trails and cycling routes near you.');
 writeFileSync(plist,s);
 
-// Fail the cloud build instead of silently shipping an IPA without the key.
 const verify=readFileSync(plist,'utf8');
-if(!verify.includes('<key>NSLocationWhenInUseUsageDescription</key>')){
-  throw new Error('NSLocationWhenInUseUsageDescription was not added to Info.plist');
-}
-console.log('Verified iOS Location When In Use permission in Info.plist.');
+if(!verify.includes('<key>NSLocationWhenInUseUsageDescription</key>')) throw new Error('NSLocationWhenInUseUsageDescription was not added');
+if(verify.includes('NSLocationAlwaysAndWhenInUseUsageDescription') || verify.includes('<string>location</string>')) throw new Error('Background/Always location declarations are still present');
+console.log('Verified foreground-only iOS Location When In Use permission in Info.plist.');
