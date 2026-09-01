@@ -43,3 +43,5 @@ npm run ios:open
 - Browser/App lifecycle support
 
 The live GitHub Pages version remains separate and continues to work while the native iOS project is developed.
+
+<!-- Codemagic source refresh marker: 2026-09-01 -->
