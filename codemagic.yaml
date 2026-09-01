@@ -32,6 +32,10 @@ workflows:
             npx cap add ios
           fi
           npx cap sync ios
+          node scripts/configure-ios-background-location.mjs
+          BUILD_NUM="${BUILD_NUMBER:-2}"
+          sed -i '' -E "s/CURRENT_PROJECT_VERSION = [0-9]+;/CURRENT_PROJECT_VERSION = ${BUILD_NUM};/g" ios/App/App.xcodeproj/project.pbxproj
+          echo "Using iOS build number ${BUILD_NUM}"
       - name: Set up iOS code signing
         script: |
           xcode-project use-profiles \
