@@ -29,34 +29,28 @@ workflows:
           npx cap sync ios
           node scripts/configure-ios-background-location.mjs
           node scripts/configure-native-corelocation.mjs
-      - name: Verify location configuration
+      - name: Verify dedicated location plugin
         script: |
           cd trailride-native
           /usr/libexec/PlistBuddy -c "Print :NSLocationWhenInUseUsageDescription" ios/App/App/Info.plist
-          ACTIVE_COUNT=$(grep -c "func applicationDidBecomeActive(_ application: UIApplication)" ios/App/App/AppDelegate.swift || true)
-          echo "applicationDidBecomeActive count: $ACTIVE_COUNT"
-          test "$ACTIVE_COUNT" -eq 1
-          grep -n "TRAILRIDE_NATIVE_LOCATION_FOREGROUND_REQUEST" ios/App/App/AppDelegate.swift
-          grep -n "requestWhenInUseAuthorization" ios/App/App/AppDelegate.swift
+          grep -n "class TrailRideLocationPlugin" ios/App/App/TrailRideLocationPlugin.swift
+          grep -n "requestWhenInUseAuthorization" ios/App/App/TrailRideLocationPlugin.swift
+          grep -n "registerPluginInstance(TrailRideLocationPlugin())" ios/App/App/TrailRideBridgeViewController.swift
+          grep -n "TrailRideLocationPlugin.swift in Sources" ios/App/App.xcodeproj/project.pbxproj
+          grep -n 'customClass="TrailRideBridgeViewController"' ios/App/App/Base.lproj/Main.storyboard ios/App/App/Main.storyboard 2>/dev/null || true
+          if grep -q "requestWhenInUseAuthorization" ios/App/App/AppDelegate.swift; then
+            echo "Unexpected AppDelegate location permission request found"
+            exit 1
+          fi
           if /usr/libexec/PlistBuddy -c "Print :NSLocationAlwaysAndWhenInUseUsageDescription" ios/App/App/Info.plist >/dev/null 2>&1; then
             echo "Unexpected Always location permission found"
             exit 1
           fi
-          if /usr/libexec/PlistBuddy -c "Print :UIBackgroundModes" ios/App/App/Info.plist >/dev/null 2>&1; then
-            echo "Unexpected UIBackgroundModes found while validating Near Me"
-            exit 1
-          fi
-          echo "Foreground-only location configuration verified"
+          echo "Dedicated foreground CoreLocation plugin verified"
       - name: Compile iOS without upload
         script: |
           cd trailride-native
-          xcodebuild \
-            -project ios/App/App.xcodeproj \
-            -scheme App \
-            -sdk iphonesimulator \
-            -configuration Debug \
-            CODE_SIGNING_ALLOWED=NO \
-            build
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -sdk iphonesimulator -configuration Debug CODE_SIGNING_ALLOWED=NO build
     artifacts:
       - /tmp/xcodebuild_logs/*.log
 
@@ -96,26 +90,18 @@ workflows:
           node scripts/configure-ios-background-location.mjs
           node scripts/configure-native-corelocation.mjs
           /usr/libexec/PlistBuddy -c "Print :NSLocationWhenInUseUsageDescription" ios/App/App/Info.plist
-          ACTIVE_COUNT=$(grep -c "func applicationDidBecomeActive(_ application: UIApplication)" ios/App/App/AppDelegate.swift || true)
-          echo "applicationDidBecomeActive count: $ACTIVE_COUNT"
-          test "$ACTIVE_COUNT" -eq 1
-          grep -n "TRAILRIDE_NATIVE_LOCATION_FOREGROUND_REQUEST" ios/App/App/AppDelegate.swift
-          grep -n "requestWhenInUseAuthorization" ios/App/App/AppDelegate.swift
+          grep -n "class TrailRideLocationPlugin" ios/App/App/TrailRideLocationPlugin.swift
+          grep -n "requestWhenInUseAuthorization" ios/App/App/TrailRideLocationPlugin.swift
+          grep -n "registerPluginInstance(TrailRideLocationPlugin())" ios/App/App/TrailRideBridgeViewController.swift
           BUILD_NUM="${BUILD_NUMBER:-2}"
           sed -i '' -E "s/CURRENT_PROJECT_VERSION = [0-9]+;/CURRENT_PROJECT_VERSION = ${BUILD_NUM};/g" ios/App/App.xcodeproj/project.pbxproj
           echo "Using iOS build number ${BUILD_NUM}"
       - name: Set up iOS code signing
         script: |
-          xcode-project use-profiles \
-            --project "$XCODE_WORKSPACE" \
-            --archive-method app-store \
-            --custom-export-options='{"testFlightInternalTestingOnly": true}' \
-            --code-signing-setup-verbose-logging
+          xcode-project use-profiles --project "$XCODE_WORKSPACE" --archive-method app-store --custom-export-options='{"testFlightInternalTestingOnly": true}' --code-signing-setup-verbose-logging
       - name: Build IPA
         script: |
-          xcode-project build-ipa \
-            --project "$XCODE_WORKSPACE" \
-            --scheme "$XCODE_SCHEME"
+          xcode-project build-ipa --project "$XCODE_WORKSPACE" --scheme "$XCODE_SCHEME"
     artifacts:
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
