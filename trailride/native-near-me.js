@@ -20,24 +20,26 @@
     return {coords:{latitude,longitude,accuracy:Number(c?.accuracy)||null}};
   }
 
+  async function diagnostic(){
+    const fn=window.TrailRideNative?.getLocationDiagnostic;
+    if(!fn)return null;
+    try{return await timeout(fn(),6000,'diagnostic timeout')}catch(e){return {error:errText(e)}}
+  }
+
   async function capacitorPosition(){
     const geo=capGeo();
     if(!geo?.getCurrentPosition)throw new Error('Native geolocation bridge unavailable');
 
-    let state='unknown';
-    if(geo.checkPermissions){
-      try{
-        const perms=await timeout(geo.checkPermissions(),5000,'permission check timeout');
-        state=perms?.location||'unknown';
-      }catch(e){
-        setStatus(`Location debug: permission check failed • trying GPS directly`);
-      }
-    }
-    setStatus(`Location debug: native=yes • bridge=yes • permission=${state} • starting GPS`);
+    const d=await diagnostic();
+    const state=d?.location||'unknown';
+    const coarse=d?.coarseLocation||'unknown';
+    const diagErr=d?.error?` • diag=${d.error}`:'';
+    setStatus(`Location diagnostic: native=yes • permission=${state} • coarse=${coarse}${diagErr}`);
 
-    // On iOS, getCurrentPosition itself triggers the system When In Use prompt
-    // when authorization is not yet determined. This avoids the requestPermissions
-    // call that is hanging on this TestFlight install.
+    if(state==='denied'){
+      throw new Error('iOS reports location permission denied. Change TrailRide location access in Settings.');
+    }
+
     try{
       const pos=await timeout(
         geo.getCurrentPosition({enableHighAccuracy:false,timeout:30000,maximumAge:60000}),
@@ -46,16 +48,12 @@
       );
       return normalize(pos);
     }catch(e){
-      const msg=errText(e).toLowerCase();
-      if(msg.includes('denied')||msg.includes('permission')){
-        throw new Error(`iOS location permission denied: ${errText(e)}`);
-      }
-      throw e;
+      throw new Error(`permission=${state} • coarse=${coarse} • GPS=${errText(e)}`);
     }
   }
 
   async function browserPosition(){
-    setStatus(`Location debug: browser GPS fallback…`);
+    setStatus(`Location diagnostic: browser GPS fallback…`);
     return timeout(new Promise((resolve,reject)=>{
       if(!navigator.geolocation)return reject(new Error('Browser geolocation unavailable'));
       navigator.geolocation.getCurrentPosition(
@@ -73,7 +71,7 @@
   async function useLocation(){
     const old=btn.textContent;
     btn.disabled=true;btn.textContent='📍 Finding you…';
-    setStatus(`Location debug: native=${isNative()?'yes':'no'} • bridge=${capGeo()?'yes':'no'}`);
+    setStatus(`Location diagnostic: native=${isNative()?'yes':'no'} • bridge=${capGeo()?'yes':'no'}`);
     try{
       const p=await getPosition(),c=p.coords;
       mode='near';searchText='';trailData.clear();
@@ -86,7 +84,7 @@
       document.getElementById('trailList')?.scrollIntoView({behavior:'smooth',block:'start'});
     }catch(err){
       console.error('TrailRide Near Me location error',err);
-      setStatus(`Location error: ${errText(err)}`);
+      setStatus(`Location diagnostic error: ${errText(err)}`);
     }finally{
       btn.disabled=false;
       btn.textContent=old||'📍 Near Me';
@@ -94,5 +92,5 @@
   }
 
   btn.onclick=useLocation;
-  window.TrailRideNearMe={useLocation,isNative,getPosition};
+  window.TrailRideNearMe={useLocation,isNative,getPosition,diagnostic};
 })();
