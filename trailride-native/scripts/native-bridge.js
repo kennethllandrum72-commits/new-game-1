@@ -1,11 +1,7 @@
-import { registerPlugin } from '@capacitor/core';
 import { Geolocation } from '@capacitor/geolocation';
-
-const TrailRideLocation = registerPlugin('TrailRideLocation');
 
 window.TrailRideNative = window.TrailRideNative || {};
 window.TrailRideNative.Geolocation = Geolocation;
-window.TrailRideNative.LocationPermission = TrailRideLocation;
 
 window.TrailRideNative.getLocationDiagnostic = async () => {
   const out = {
@@ -14,17 +10,8 @@ window.TrailRideNative.getLocationDiagnostic = async () => {
     bridge: true,
     location: 'unknown',
     coarseLocation: 'unknown',
-    nativeStatus: 'unknown',
-    servicesEnabled: null,
     error: null
   };
-  try {
-    const native = await TrailRideLocation.getStatus();
-    out.nativeStatus = native?.status || 'unknown';
-    out.servicesEnabled = native?.servicesEnabled ?? null;
-  } catch (error) {
-    out.error = `native plugin: ${String(error?.message || error)}`;
-  }
   try {
     const permissions = await Geolocation.checkPermissions();
     out.location = permissions?.location || 'unknown';
