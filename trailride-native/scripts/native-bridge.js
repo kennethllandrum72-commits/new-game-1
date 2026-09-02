@@ -1,11 +1,12 @@
+import { registerPlugin } from '@capacitor/core';
 import { Geolocation } from '@capacitor/geolocation';
 
-// Expose the imported Capacitor plugin to the static TrailRide web UI.
+const TrailRideLocation = registerPlugin('TrailRideLocation');
+
 window.TrailRideNative = window.TrailRideNative || {};
 window.TrailRideNative.Geolocation = Geolocation;
+window.TrailRideNative.LocationPermission = TrailRideLocation;
 
-// Diagnostic helper used by Near Me. This reports the native Capacitor
-// permission state before GPS is started so TestFlight failures are actionable.
 window.TrailRideNative.getLocationDiagnostic = async () => {
   const out = {
     platform: window.Capacitor?.getPlatform?.() || 'unknown',
@@ -13,21 +14,24 @@ window.TrailRideNative.getLocationDiagnostic = async () => {
     bridge: true,
     location: 'unknown',
     coarseLocation: 'unknown',
+    nativeStatus: 'unknown',
+    servicesEnabled: null,
     error: null
   };
-
   try {
-    if (!Geolocation?.checkPermissions) {
-      out.error = 'checkPermissions unavailable';
-      return out;
-    }
+    const native = await TrailRideLocation.getStatus();
+    out.nativeStatus = native?.status || 'unknown';
+    out.servicesEnabled = native?.servicesEnabled ?? null;
+  } catch (error) {
+    out.error = `native plugin: ${String(error?.message || error)}`;
+  }
+  try {
     const permissions = await Geolocation.checkPermissions();
     out.location = permissions?.location || 'unknown';
     out.coarseLocation = permissions?.coarseLocation || 'unknown';
   } catch (error) {
-    out.error = String(error?.message || error || 'unknown diagnostic error');
+    out.error = [out.error, `geolocation: ${String(error?.message || error)}`].filter(Boolean).join(' • ');
   }
-
   return out;
 };
 
