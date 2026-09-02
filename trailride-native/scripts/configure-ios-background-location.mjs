@@ -1,32 +1,42 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { execFileSync } from 'node:child_process';
 
-const root=resolve(import.meta.dirname,'..');
-const plist=resolve(root,'ios','App','App','Info.plist');
-if(!existsSync(plist)){
-  console.log('Info.plist not found yet; run after cap add/sync.');
-  process.exit(0);
+const root = resolve(import.meta.dirname, '..');
+const plist = resolve(root, 'ios', 'App', 'App', 'Info.plist');
+
+if (!existsSync(plist)) {
+  throw new Error(`Info.plist not found at ${plist}; run after cap add/sync.`);
 }
 
-let s=readFileSync(plist,'utf8');
+const plistBuddy = '/usr/libexec/PlistBuddy';
+const run = (command, { allowFailure = false } = {}) => {
+  try {
+    return execFileSync(plistBuddy, ['-c', command, plist], { encoding: 'utf8' }).trim();
+  } catch (error) {
+    if (allowFailure) return '';
+    throw error;
+  }
+};
 
-// Near Me only needs foreground When-In-Use authorization. Remove background
-// and Always declarations while we establish the normal iOS permission flow.
-s=s.replace(/\s*<key>NSLocationAlwaysAndWhenInUseUsageDescription<\/key>\s*<string>[\s\S]*?<\/string>/g,'');
-s=s.replace(/\s*<key>NSLocationAlwaysUsageDescription<\/key>\s*<string>[\s\S]*?<\/string>/g,'');
-s=s.replace(/\s*<key>UIBackgroundModes<\/key>\s*<array>\s*<string>location<\/string>\s*<\/array>/g,'');
+// Near Me only needs foreground When-In-Use authorization. Remove any stale
+// Always/background keys first. PlistBuddy writes at the ROOT dictionary,
+// avoiding the prior XML-regex bug that could insert the key into a nested dict.
+run('Delete :NSLocationAlwaysAndWhenInUseUsageDescription', { allowFailure: true });
+run('Delete :NSLocationAlwaysUsageDescription', { allowFailure: true });
+run('Delete :UIBackgroundModes', { allowFailure: true });
+run('Delete :NSLocationWhenInUseUsageDescription', { allowFailure: true });
+run('Add :NSLocationWhenInUseUsageDescription string TrailRide uses your location when you tap Near Me to find trails and cycling routes near you.');
 
-function setString(key,value){
-  const re=new RegExp(`<key>${key}<\\/key>\\s*<string>[\\s\\S]*?<\\/string>`);
-  const xml=`<key>${key}</key>\n\t<string>${value}</string>`;
-  if(re.test(s)) s=s.replace(re,xml);
-  else s=s.replace(/<\/dict>/,`\t${xml}\n</dict>`);
+const usage = run('Print :NSLocationWhenInUseUsageDescription');
+if (!usage.includes('TrailRide uses your location')) {
+  throw new Error(`NSLocationWhenInUseUsageDescription verification failed: ${usage}`);
 }
 
-setString('NSLocationWhenInUseUsageDescription','TrailRide uses your location when you tap Near Me to find trails and cycling routes near you.');
-writeFileSync(plist,s);
+const always = run('Print :NSLocationAlwaysAndWhenInUseUsageDescription', { allowFailure: true });
+if (always) throw new Error('Unexpected Always location permission is still present');
 
-const verify=readFileSync(plist,'utf8');
-if(!verify.includes('<key>NSLocationWhenInUseUsageDescription</key>')) throw new Error('NSLocationWhenInUseUsageDescription was not added');
-if(verify.includes('NSLocationAlwaysAndWhenInUseUsageDescription') || verify.includes('<string>location</string>')) throw new Error('Background/Always location declarations are still present');
-console.log('Verified foreground-only iOS Location When In Use permission in Info.plist.');
+const background = run('Print :UIBackgroundModes', { allowFailure: true });
+if (background) throw new Error('Unexpected UIBackgroundModes is still present');
+
+console.log(`Verified root NSLocationWhenInUseUsageDescription: ${usage}`);
