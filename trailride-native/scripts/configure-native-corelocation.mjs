@@ -21,8 +21,8 @@ if (!s.includes('trailRideLocationManager')) {
   );
 }
 
-// Configure the manager during launch, but do not ask for permission yet.
-// iOS can ignore permission prompts requested too early in the app lifecycle.
+// Configure the manager during launch. Do not request permission here because
+// the app may not yet be active enough for iOS to present an authorization UI.
 if (!s.includes('TRAILRIDE_NATIVE_LOCATION_SETUP')) {
   const marker = `        // TRAILRIDE_NATIVE_LOCATION_SETUP\n        trailRideLocationManager.desiredAccuracy = kCLLocationAccuracyHundredMeters\n`;
   const launchSignature = 'func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {';
@@ -33,23 +33,28 @@ if (!s.includes('TRAILRIDE_NATIVE_LOCATION_SETUP')) {
   s = s.slice(0, returnIndex) + marker + s.slice(returnIndex);
 }
 
-// Request When-In-Use only after the app is fully foreground/active.
-// This is the lifecycle point where iOS is allowed to present the permission sheet.
+// Capacitor's generated AppDelegate already defines applicationDidBecomeActive.
+// Inject our authorization request into that existing method instead of adding
+// a second method with the same signature (which Swift rejects as a redeclaration).
 if (!s.includes('TRAILRIDE_NATIVE_LOCATION_FOREGROUND_REQUEST')) {
-  const method = `\n    func applicationDidBecomeActive(_ application: UIApplication) {\n        // TRAILRIDE_NATIVE_LOCATION_FOREGROUND_REQUEST\n        guard CLLocationManager.locationServicesEnabled() else { return }\n        if trailRideLocationManager.authorizationStatus == .notDetermined {\n            trailRideLocationManager.requestWhenInUseAuthorization()\n        }\n    }\n`;
-  const insertAt = s.lastIndexOf('\n}');
-  if (insertAt < 0) throw new Error('Could not find AppDelegate class closing brace');
-  s = s.slice(0, insertAt) + method + s.slice(insertAt);
+  const activeSignature = 'func applicationDidBecomeActive(_ application: UIApplication) {';
+  const activeIndex = s.indexOf(activeSignature);
+  if (activeIndex < 0) throw new Error('Could not find existing applicationDidBecomeActive in AppDelegate.swift');
+  const bodyStart = activeIndex + activeSignature.length;
+  const marker = `\n        // TRAILRIDE_NATIVE_LOCATION_FOREGROUND_REQUEST\n        if CLLocationManager.locationServicesEnabled() && trailRideLocationManager.authorizationStatus == .notDetermined {\n            trailRideLocationManager.requestWhenInUseAuthorization()\n        }`;
+  s = s.slice(0, bodyStart) + marker + s.slice(bodyStart);
 }
 
 writeFileSync(appDelegate, s);
 
 const verify = readFileSync(appDelegate, 'utf8');
+const activeCount = (verify.match(/func applicationDidBecomeActive\(_ application: UIApplication\)/g) || []).length;
 if (!verify.includes('import CoreLocation') ||
-    !verify.includes('applicationDidBecomeActive') ||
+    !verify.includes('TRAILRIDE_NATIVE_LOCATION_FOREGROUND_REQUEST') ||
     !verify.includes('requestWhenInUseAuthorization()') ||
-    !verify.includes('trailRideLocationManager')) {
-  throw new Error('Native CoreLocation foreground authorization request was not installed correctly');
+    !verify.includes('trailRideLocationManager') ||
+    activeCount !== 1) {
+  throw new Error(`Native CoreLocation active authorization injection failed; applicationDidBecomeActive count=${activeCount}`);
 }
 
-console.log('Verified native CoreLocation When-In-Use request after app becomes active.');
+console.log('Verified CoreLocation request inside the existing applicationDidBecomeActive method.');
