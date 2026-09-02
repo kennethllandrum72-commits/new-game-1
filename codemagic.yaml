@@ -139,24 +139,36 @@ workflows:
       - name: Build IPA
         script: |
           xcode-project build-ipa --project "$XCODE_WORKSPACE" --scheme "$XCODE_SCHEME"
-      - name: Verify archived native bridge
+      - name: Verify built IPA native bridge
         script: |
           set -e
-          APP_PATH=$(find ~/Library/Developer/Xcode/Archives -type d -name "App.app" | tail -1)
+          IPA_PATH=$(find "$CM_BUILD_DIR" -type f -name "*.ipa" -print -quit)
+          if [ -z "$IPA_PATH" ]; then
+            IPA_PATH=$(find . -type f -name "*.ipa" -print -quit)
+          fi
+          if [ -z "$IPA_PATH" ] || [ ! -f "$IPA_PATH" ]; then
+            echo "Built IPA not found; refusing to publish"
+            exit 1
+          fi
+          echo "Verifying IPA: $IPA_PATH"
+          VERIFY_DIR=$(mktemp -d)
+          unzip -q "$IPA_PATH" -d "$VERIFY_DIR"
+          APP_PATH=$(find "$VERIFY_DIR/Payload" -maxdepth 1 -type d -name "*.app" -print -quit)
           if [ -z "$APP_PATH" ] || [ ! -f "$APP_PATH/Info.plist" ]; then
-            echo "Built .app not found; refusing to publish"
+            echo "Built .app not found inside IPA; refusing to publish"
             exit 1
           fi
           echo "Built app: $APP_PATH"
           /usr/libexec/PlistBuddy -c "Print :NSLocationWhenInUseUsageDescription" "$APP_PATH/Info.plist"
-          APP_BIN="$APP_PATH/App"
-          if [ ! -f "$APP_BIN" ]; then
-            echo "Archived App binary missing"
+          EXECUTABLE=$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$APP_PATH/Info.plist")
+          APP_BIN="$APP_PATH/$EXECUTABLE"
+          if [ -z "$EXECUTABLE" ] || [ ! -f "$APP_BIN" ]; then
+            echo "Built app executable missing"
             exit 1
           fi
           strings "$APP_BIN" | grep -q "TrailRideLocationPlugin"
           strings "$APP_BIN" | grep -q "TrailRideBridgeViewController"
-          echo "Archived binary contains TrailRide native plugin and bridge controller"
+          echo "Built IPA contains TrailRide native plugin and bridge controller"
     artifacts:
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
