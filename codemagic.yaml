@@ -1,6 +1,67 @@
 workflows:
+  trailride-ios-validate:
+    name: TrailRide iOS Validate Only
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    environment:
+      node: 22
+      xcode: latest
+      cocoapods: default
+      vars:
+        BUNDLE_ID: com.trailride.nearme
+        XCODE_PROJECT: trailride-native/ios/App/App.xcodeproj
+        XCODE_SCHEME: App
+    scripts:
+      - name: Install dependencies
+        script: |
+          cd trailride-native
+          npm install
+      - name: Prepare web bundle
+        script: |
+          cd trailride-native
+          npm run prepare:web
+      - name: Generate and sync iOS project
+        script: |
+          cd trailride-native
+          if [ ! -d ios ]; then
+            npx cap add ios
+          fi
+          npx cap sync ios
+          node scripts/configure-ios-background-location.mjs
+          node scripts/configure-native-corelocation.mjs
+      - name: Verify location configuration
+        script: |
+          cd trailride-native
+          /usr/libexec/PlistBuddy -c "Print :NSLocationWhenInUseUsageDescription" ios/App/App/Info.plist
+          ACTIVE_COUNT=$(grep -c "func applicationDidBecomeActive(_ application: UIApplication)" ios/App/App/AppDelegate.swift || true)
+          echo "applicationDidBecomeActive count: $ACTIVE_COUNT"
+          test "$ACTIVE_COUNT" -eq 1
+          grep -n "TRAILRIDE_NATIVE_LOCATION_FOREGROUND_REQUEST" ios/App/App/AppDelegate.swift
+          grep -n "requestWhenInUseAuthorization" ios/App/App/AppDelegate.swift
+          if /usr/libexec/PlistBuddy -c "Print :NSLocationAlwaysAndWhenInUseUsageDescription" ios/App/App/Info.plist >/dev/null 2>&1; then
+            echo "Unexpected Always location permission found"
+            exit 1
+          fi
+          if /usr/libexec/PlistBuddy -c "Print :UIBackgroundModes" ios/App/App/Info.plist >/dev/null 2>&1; then
+            echo "Unexpected UIBackgroundModes found while validating Near Me"
+            exit 1
+          fi
+          echo "Foreground-only location configuration verified"
+      - name: Compile iOS without upload
+        script: |
+          cd trailride-native
+          xcodebuild \
+            -project ios/App/App.xcodeproj \
+            -scheme App \
+            -sdk iphonesimulator \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+    artifacts:
+      - /tmp/xcodebuild_logs/*.log
+
   trailride-ios-testflight:
-    name: TrailRide iOS TestFlight
+    name: TrailRide iOS TestFlight Release
     max_build_duration: 60
     instance_type: mac_mini_m2
     integrations:
@@ -35,6 +96,10 @@ workflows:
           node scripts/configure-ios-background-location.mjs
           node scripts/configure-native-corelocation.mjs
           /usr/libexec/PlistBuddy -c "Print :NSLocationWhenInUseUsageDescription" ios/App/App/Info.plist
+          ACTIVE_COUNT=$(grep -c "func applicationDidBecomeActive(_ application: UIApplication)" ios/App/App/AppDelegate.swift || true)
+          echo "applicationDidBecomeActive count: $ACTIVE_COUNT"
+          test "$ACTIVE_COUNT" -eq 1
+          grep -n "TRAILRIDE_NATIVE_LOCATION_FOREGROUND_REQUEST" ios/App/App/AppDelegate.swift
           grep -n "requestWhenInUseAuthorization" ios/App/App/AppDelegate.swift
           BUILD_NUM="${BUILD_NUMBER:-2}"
           sed -i '' -E "s/CURRENT_PROJECT_VERSION = [0-9]+;/CURRENT_PROJECT_VERSION = ${BUILD_NUM};/g" ios/App/App.xcodeproj/project.pbxproj
