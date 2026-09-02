@@ -31,21 +31,25 @@ workflows:
           node scripts/configure-native-corelocation.mjs
       - name: Verify native location configuration
         script: |
+          set -e
           cd trailride-native
-          echo "Usage description:"
           /usr/libexec/PlistBuddy -c "Print :NSLocationWhenInUseUsageDescription" ios/App/App/Info.plist
           grep -n "class TrailRideLocationPlugin" ios/App/App/TrailRideLocationPlugin.swift
           grep -n "requestWhenInUseAuthorization" ios/App/App/TrailRideLocationPlugin.swift
           grep -n "requestLocation()" ios/App/App/TrailRideLocationPlugin.swift
           grep -n "registerPluginInstance(TrailRideLocationPlugin())" ios/App/App/TrailRideBridgeViewController.swift
+          grep -n "TRAILRIDE_FORCE_BRIDGE_CONTROLLER" ios/App/App/AppDelegate.swift
+          grep -n "window?.rootViewController = TrailRideBridgeViewController()" ios/App/App/AppDelegate.swift
+          grep -n 'customClass="TrailRideBridgeViewController"' ios/App/App/Base.lproj/Main.storyboard ios/App/App/Main.storyboard 2>/dev/null
           grep -n "TrailRideLocationPlugin.swift in Sources" ios/App/App.xcodeproj/project.pbxproj
+          grep -n "TrailRideBridgeViewController.swift in Sources" ios/App/App.xcodeproj/project.pbxproj
           grep -n "TrailRideLocation = registerPlugin('TrailRideLocation')" scripts/native-bridge.js
           grep -n "requestWhenInUse" ../trailride/native-near-me.js
           if /usr/libexec/PlistBuddy -c "Print :NSLocationAlwaysAndWhenInUseUsageDescription" ios/App/App/Info.plist >/dev/null 2>&1; then
             echo "Unexpected Always permission found"
             exit 1
           fi
-          echo "Dedicated foreground CoreLocation permission and GPS path verified"
+          echo "Forced native bridge controller, CoreLocation permission, and GPS path verified"
       - name: Compile iOS without upload
         script: |
           cd trailride-native
@@ -81,6 +85,7 @@ workflows:
           npm run prepare:web
       - name: Generate and sync iOS project
         script: |
+          set -e
           cd trailride-native
           if [ ! -d ios ]; then
             npx cap add ios
@@ -88,31 +93,50 @@ workflows:
           npx cap sync ios
           node scripts/configure-ios-background-location.mjs
           node scripts/configure-native-corelocation.mjs
+          BUILD_NUM="${BUILD_NUMBER:-2}"
+          sed -i '' -E "s/CURRENT_PROJECT_VERSION = [0-9]+;/CURRENT_PROJECT_VERSION = ${BUILD_NUM};/g" ios/App/App.xcodeproj/project.pbxproj
+          echo "Using iOS build number ${BUILD_NUM}"
+      - name: Verify release native bridge before signing
+        script: |
+          set -e
+          cd trailride-native
           echo "Release usage description:"
           /usr/libexec/PlistBuddy -c "Print :NSLocationWhenInUseUsageDescription" ios/App/App/Info.plist
           grep -n "class TrailRideLocationPlugin" ios/App/App/TrailRideLocationPlugin.swift
           grep -n "requestWhenInUseAuthorization" ios/App/App/TrailRideLocationPlugin.swift
           grep -n "requestLocation()" ios/App/App/TrailRideLocationPlugin.swift
           grep -n "registerPluginInstance(TrailRideLocationPlugin())" ios/App/App/TrailRideBridgeViewController.swift
+          grep -n "TRAILRIDE_FORCE_BRIDGE_CONTROLLER" ios/App/App/AppDelegate.swift
+          grep -n "window?.rootViewController = TrailRideBridgeViewController()" ios/App/App/AppDelegate.swift
+          grep -n 'customClass="TrailRideBridgeViewController"' ios/App/App/Base.lproj/Main.storyboard ios/App/App/Main.storyboard 2>/dev/null
           grep -n "TrailRideLocationPlugin.swift in Sources" ios/App/App.xcodeproj/project.pbxproj
-          BUILD_NUM="${BUILD_NUMBER:-2}"
-          sed -i '' -E "s/CURRENT_PROJECT_VERSION = [0-9]+;/CURRENT_PROJECT_VERSION = ${BUILD_NUM};/g" ios/App/App.xcodeproj/project.pbxproj
-          echo "Using iOS build number ${BUILD_NUM}"
+          grep -n "TrailRideBridgeViewController.swift in Sources" ios/App/App.xcodeproj/project.pbxproj
+          grep -n "TrailRideLocation = registerPlugin('TrailRideLocation')" scripts/native-bridge.js
+          echo "Release native bridge verified before signing"
       - name: Set up iOS code signing
         script: |
           xcode-project use-profiles --project "$XCODE_WORKSPACE" --archive-method app-store --custom-export-options='{"testFlightInternalTestingOnly": true}' --code-signing-setup-verbose-logging
       - name: Build IPA
         script: |
           xcode-project build-ipa --project "$XCODE_WORKSPACE" --scheme "$XCODE_SCHEME"
-      - name: Verify built app location usage description
+      - name: Verify archived native bridge
         script: |
+          set -e
           APP_PATH=$(find ~/Library/Developer/Xcode/Archives -type d -name "App.app" | tail -1)
-          if [ -n "$APP_PATH" ] && [ -f "$APP_PATH/Info.plist" ]; then
-            echo "Built app Info.plist: $APP_PATH/Info.plist"
-            /usr/libexec/PlistBuddy -c "Print :NSLocationWhenInUseUsageDescription" "$APP_PATH/Info.plist"
-          else
-            echo "Built .app not found for post-archive plist check"
+          if [ -z "$APP_PATH" ] || [ ! -f "$APP_PATH/Info.plist" ]; then
+            echo "Built .app not found; refusing to publish"
+            exit 1
           fi
+          echo "Built app: $APP_PATH"
+          /usr/libexec/PlistBuddy -c "Print :NSLocationWhenInUseUsageDescription" "$APP_PATH/Info.plist"
+          APP_BIN="$APP_PATH/App"
+          if [ ! -f "$APP_BIN" ]; then
+            echo "Archived App binary missing"
+            exit 1
+          fi
+          strings "$APP_BIN" | grep -q "TrailRideLocationPlugin"
+          strings "$APP_BIN" | grep -q "TrailRideBridgeViewController"
+          echo "Archived binary contains TrailRide native plugin and bridge controller"
     artifacts:
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
