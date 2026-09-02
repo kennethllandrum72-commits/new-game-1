@@ -21,10 +21,12 @@ if (!s.includes('trailRideLocationManager')) {
   );
 }
 
-// Configure the manager during launch. Do not request permission here because
-// the app may not yet be active enough for iOS to present an authorization UI.
+// Configure CoreLocation and listen for the app becoming active. On modern
+// scene-based iOS apps, relying only on UIApplicationDelegate's
+// applicationDidBecomeActive callback can be unreliable, so use the system
+// didBecomeActive notification as the permission trigger.
 if (!s.includes('TRAILRIDE_NATIVE_LOCATION_SETUP')) {
-  const marker = `        // TRAILRIDE_NATIVE_LOCATION_SETUP\n        trailRideLocationManager.desiredAccuracy = kCLLocationAccuracyHundredMeters\n`;
+  const marker = `        // TRAILRIDE_NATIVE_LOCATION_SETUP\n        trailRideLocationManager.desiredAccuracy = kCLLocationAccuracyHundredMeters\n        NotificationCenter.default.addObserver(\n            forName: UIApplication.didBecomeActiveNotification,\n            object: nil,\n            queue: .main\n        ) { [weak self] _ in\n            guard let self = self else { return }\n            guard CLLocationManager.locationServicesEnabled() else { return }\n            if self.trailRideLocationManager.authorizationStatus == .notDetermined {\n                self.trailRideLocationManager.requestWhenInUseAuthorization()\n            }\n        }\n`;
   const launchSignature = 'func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {';
   const launchIndex = s.indexOf(launchSignature);
   if (launchIndex < 0) throw new Error('Could not find didFinishLaunchingWithOptions in AppDelegate.swift');
@@ -33,28 +35,21 @@ if (!s.includes('TRAILRIDE_NATIVE_LOCATION_SETUP')) {
   s = s.slice(0, returnIndex) + marker + s.slice(returnIndex);
 }
 
-// Capacitor's generated AppDelegate already defines applicationDidBecomeActive.
-// Inject our authorization request into that existing method instead of adding
-// a second method with the same signature (which Swift rejects as a redeclaration).
-if (!s.includes('TRAILRIDE_NATIVE_LOCATION_FOREGROUND_REQUEST')) {
-  const activeSignature = 'func applicationDidBecomeActive(_ application: UIApplication) {';
-  const activeIndex = s.indexOf(activeSignature);
-  if (activeIndex < 0) throw new Error('Could not find existing applicationDidBecomeActive in AppDelegate.swift');
-  const bodyStart = activeIndex + activeSignature.length;
-  const marker = `\n        // TRAILRIDE_NATIVE_LOCATION_FOREGROUND_REQUEST\n        if CLLocationManager.locationServicesEnabled() && trailRideLocationManager.authorizationStatus == .notDetermined {\n            trailRideLocationManager.requestWhenInUseAuthorization()\n        }`;
-  s = s.slice(0, bodyStart) + marker + s.slice(bodyStart);
-}
+// Remove the older applicationDidBecomeActive injection if this script is run
+// against a generated project that already contains it. The notification-based
+// path above is now the single source of the authorization request.
+const oldMarker = `\n        // TRAILRIDE_NATIVE_LOCATION_FOREGROUND_REQUEST\n        if CLLocationManager.locationServicesEnabled() && trailRideLocationManager.authorizationStatus == .notDetermined {\n            trailRideLocationManager.requestWhenInUseAuthorization()\n        }`;
+s = s.replace(oldMarker, '');
 
 writeFileSync(appDelegate, s);
 
 const verify = readFileSync(appDelegate, 'utf8');
-const activeCount = (verify.match(/func applicationDidBecomeActive\(_ application: UIApplication\)/g) || []).length;
+const requestCount = (verify.match(/requestWhenInUseAuthorization\(\)/g) || []).length;
 if (!verify.includes('import CoreLocation') ||
-    !verify.includes('TRAILRIDE_NATIVE_LOCATION_FOREGROUND_REQUEST') ||
-    !verify.includes('requestWhenInUseAuthorization()') ||
+    !verify.includes('UIApplication.didBecomeActiveNotification') ||
     !verify.includes('trailRideLocationManager') ||
-    activeCount !== 1) {
-  throw new Error(`Native CoreLocation active authorization injection failed; applicationDidBecomeActive count=${activeCount}`);
+    requestCount !== 1) {
+  throw new Error(`Native CoreLocation notification authorization injection failed; request count=${requestCount}`);
 }
 
-console.log('Verified CoreLocation request inside the existing applicationDidBecomeActive method.');
+console.log('Verified CoreLocation When-In-Use request from UIApplication.didBecomeActiveNotification.');
