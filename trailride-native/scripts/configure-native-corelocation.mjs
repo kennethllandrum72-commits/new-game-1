@@ -88,7 +88,6 @@ import Capacitor
 @objc(TrailRideBridgeViewController)
 class TrailRideBridgeViewController: CAPBridgeViewController {
     override open func capacitorDidLoad() {
-        super.capacitorDidLoad()
         bridge?.registerPluginInstance(TrailRideLocationPlugin())
     }
 }
@@ -150,7 +149,8 @@ if (!verifyPbx.includes('TrailRideLocationPlugin.swift in Sources') ||
     !verifyPbx.includes('TrailRideBridgeViewController.swift in Sources') ||
     !verifyStory.includes('customClass="TrailRideBridgeViewController"') ||
     !plugin.includes('requestWhenInUseAuthorization()') ||
-    !viewController.includes('registerPluginInstance(TrailRideLocationPlugin())')) {
+    !viewController.includes('registerPluginInstance(TrailRideLocationPlugin())') ||
+    viewController.includes('super.capacitorDidLoad()')) {
   throw new Error('Dedicated TrailRide CoreLocation plugin configuration failed');
 }
-console.log('Verified dedicated TrailRideLocation native plugin and bridge registration.');
+console.log('Verified dedicated TrailRideLocation native plugin registration before Capacitor plugin finalization.');
