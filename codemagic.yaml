@@ -40,7 +40,17 @@ workflows:
           grep -n "registerPluginInstance(TrailRideLocationPlugin())" ios/App/App/TrailRideBridgeViewController.swift
           grep -n "TRAILRIDE_FORCE_BRIDGE_CONTROLLER" ios/App/App/AppDelegate.swift
           grep -n "window?.rootViewController = TrailRideBridgeViewController()" ios/App/App/AppDelegate.swift
-          grep -n 'customClass="TrailRideBridgeViewController"' ios/App/App/Base.lproj/Main.storyboard ios/App/App/Main.storyboard 2>/dev/null
+          STORYBOARD=""
+          if [ -f ios/App/App/Base.lproj/Main.storyboard ]; then
+            STORYBOARD="ios/App/App/Base.lproj/Main.storyboard"
+          elif [ -f ios/App/App/Main.storyboard ]; then
+            STORYBOARD="ios/App/App/Main.storyboard"
+          else
+            echo "Main.storyboard not found"
+            exit 1
+          fi
+          echo "Using storyboard: $STORYBOARD"
+          grep -n 'customClass="TrailRideBridgeViewController"' "$STORYBOARD"
           grep -n "TrailRideLocationPlugin.swift in Sources" ios/App/App.xcodeproj/project.pbxproj
           grep -n "TrailRideBridgeViewController.swift in Sources" ios/App/App.xcodeproj/project.pbxproj
           grep -n "TrailRideLocation = registerPlugin('TrailRideLocation')" scripts/native-bridge.js
@@ -108,7 +118,17 @@ workflows:
           grep -n "registerPluginInstance(TrailRideLocationPlugin())" ios/App/App/TrailRideBridgeViewController.swift
           grep -n "TRAILRIDE_FORCE_BRIDGE_CONTROLLER" ios/App/App/AppDelegate.swift
           grep -n "window?.rootViewController = TrailRideBridgeViewController()" ios/App/App/AppDelegate.swift
-          grep -n 'customClass="TrailRideBridgeViewController"' ios/App/App/Base.lproj/Main.storyboard ios/App/App/Main.storyboard 2>/dev/null
+          STORYBOARD=""
+          if [ -f ios/App/App/Base.lproj/Main.storyboard ]; then
+            STORYBOARD="ios/App/App/Base.lproj/Main.storyboard"
+          elif [ -f ios/App/App/Main.storyboard ]; then
+            STORYBOARD="ios/App/App/Main.storyboard"
+          else
+            echo "Main.storyboard not found"
+            exit 1
+          fi
+          echo "Using storyboard: $STORYBOARD"
+          grep -n 'customClass="TrailRideBridgeViewController"' "$STORYBOARD"
           grep -n "TrailRideLocationPlugin.swift in Sources" ios/App/App.xcodeproj/project.pbxproj
           grep -n "TrailRideBridgeViewController.swift in Sources" ios/App/App.xcodeproj/project.pbxproj
           grep -n "TrailRideLocation = registerPlugin('TrailRideLocation')" scripts/native-bridge.js
