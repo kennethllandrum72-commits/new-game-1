@@ -47,16 +47,12 @@ public class TrailRideLocationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationMan
     }
 
     private func statusResult() -> [String: Any] {
-        return [
-            "status": statusString(locationManager.authorizationStatus),
-            "servicesEnabled": CLLocationManager.locationServicesEnabled()
-        ]
+        ["status": statusString(locationManager.authorizationStatus),
+         "servicesEnabled": CLLocationManager.locationServicesEnabled()]
     }
 
     @objc func getStatus(_ call: CAPPluginCall) {
-        DispatchQueue.main.async {
-            call.resolve(self.statusResult())
-        }
+        DispatchQueue.main.async { call.resolve(self.statusResult()) }
     }
 
     @objc func requestWhenInUse(_ call: CAPPluginCall) {
@@ -65,13 +61,10 @@ public class TrailRideLocationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationMan
                 call.resolve(self.statusResult())
                 return
             }
-
-            let status = self.locationManager.authorizationStatus
-            guard status == .notDetermined else {
+            guard self.locationManager.authorizationStatus == .notDetermined else {
                 call.resolve(self.statusResult())
                 return
             }
-
             self.pendingPermissionCall = call
             self.bridge?.saveCall(call)
             self.locationManager.requestWhenInUseAuthorization()
@@ -84,13 +77,11 @@ public class TrailRideLocationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationMan
                 call.reject("Location services are disabled")
                 return
             }
-
             let status = self.locationManager.authorizationStatus
             guard status == .authorizedWhenInUse || status == .authorizedAlways else {
                 call.reject("Location permission is not granted: \\(self.statusString(status))")
                 return
             }
-
             self.pendingLocationCall = call
             self.bridge?.saveCall(call)
             self.locationManager.requestLocation()
@@ -145,6 +136,18 @@ app = app.replace(/\nimport CoreLocation/g, '');
 app = app.replace(/\n\s*private let trailRideLocationManager = CLLocationManager\(\)/g, '');
 app = app.replace(/\s*\/\/ TRAILRIDE_NATIVE_LOCATION_SETUP[\s\S]*?(?=\s*return true)/g, '\n        ');
 app = app.replace(/\s*\/\/ TRAILRIDE_NATIVE_LOCATION_FOREGROUND_REQUEST[\s\S]*?(?=\n\s*})/g, '');
+
+// Do not rely only on storyboard class substitution. Force the running root
+// controller to be the subclass that registers TrailRideLocation.
+if (!app.includes('TRAILRIDE_FORCE_BRIDGE_CONTROLLER')) {
+  const launchSignature = 'func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {';
+  const launchIndex = app.indexOf(launchSignature);
+  if (launchIndex < 0) throw new Error('Could not locate didFinishLaunchingWithOptions');
+  const returnIndex = app.indexOf('return true', launchIndex);
+  if (returnIndex < 0) throw new Error('Could not locate return true in launch method');
+  const marker = `        // TRAILRIDE_FORCE_BRIDGE_CONTROLLER\n        if !(window?.rootViewController is TrailRideBridgeViewController) {\n            window?.rootViewController = TrailRideBridgeViewController()\n            window?.makeKeyAndVisible()\n        }\n`;
+  app = app.slice(0, returnIndex) + marker + app.slice(returnIndex);
+}
 writeFileSync(appDelegate, app);
 
 let pbx = readFileSync(projectFile, 'utf8');
@@ -156,14 +159,12 @@ const vcBuild = 'A1B2C3D4E5F6000000000004';
 if (!pbx.includes('TrailRideLocationPlugin.swift in Sources')) {
   pbx = pbx.replace('/* Begin PBXBuildFile section */', `/* Begin PBXBuildFile section */\n\t\t${pluginBuild} /* TrailRideLocationPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = ${pluginRef} /* TrailRideLocationPlugin.swift */; };\n\t\t${vcBuild} /* TrailRideBridgeViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = ${vcRef} /* TrailRideBridgeViewController.swift */; };`);
   pbx = pbx.replace('/* Begin PBXFileReference section */', `/* Begin PBXFileReference section */\n\t\t${pluginRef} /* TrailRideLocationPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrailRideLocationPlugin.swift; sourceTree = "<group>"; };\n\t\t${vcRef} /* TrailRideBridgeViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrailRideBridgeViewController.swift; sourceTree = "<group>"; };`);
-
   const appGroup = pbx.match(/([A-F0-9]{24}) \/\* App \*\/ = \{\n\s*isa = PBXGroup;\n\s*children = \(/);
   if (!appGroup) throw new Error('Could not locate App PBXGroup');
   const childNeedle = `${appGroup[1]} /* App */ = {`;
   const groupStart = pbx.indexOf(childNeedle);
   const childrenStart = pbx.indexOf('children = (', groupStart) + 'children = ('.length;
   pbx = pbx.slice(0, childrenStart) + `\n\t\t\t\t${pluginRef} /* TrailRideLocationPlugin.swift */,\n\t\t\t\t${vcRef} /* TrailRideBridgeViewController.swift */,` + pbx.slice(childrenStart);
-
   const sources = pbx.match(/([A-F0-9]{24}) \/\* Sources \*\/ = \{\n\s*isa = PBXSourcesBuildPhase;\n\s*buildActionMask = \d+;\n\s*files = \(/);
   if (!sources) throw new Error('Could not locate PBXSourcesBuildPhase');
   const filesStart = sources.index + sources[0].length;
@@ -171,10 +172,7 @@ if (!pbx.includes('TrailRideLocationPlugin.swift in Sources')) {
 }
 writeFileSync(projectFile, pbx);
 
-const storyboardCandidates = [
-  resolve(appDir, 'Base.lproj', 'Main.storyboard'),
-  resolve(appDir, 'Main.storyboard')
-];
+const storyboardCandidates = [resolve(appDir, 'Base.lproj', 'Main.storyboard'), resolve(appDir, 'Main.storyboard')];
 const storyboard = storyboardCandidates.find(existsSync);
 if (!storyboard) throw new Error('Main.storyboard not found');
 let story = readFileSync(storyboard, 'utf8');
@@ -183,12 +181,15 @@ writeFileSync(storyboard, story);
 
 const verifyPbx = readFileSync(projectFile, 'utf8');
 const verifyStory = readFileSync(storyboard, 'utf8');
+const verifyApp = readFileSync(appDelegate, 'utf8');
 if (!verifyPbx.includes('TrailRideLocationPlugin.swift in Sources') ||
     !verifyPbx.includes('TrailRideBridgeViewController.swift in Sources') ||
     !verifyStory.includes('customClass="TrailRideBridgeViewController"') ||
+    !verifyApp.includes('TRAILRIDE_FORCE_BRIDGE_CONTROLLER') ||
+    !verifyApp.includes('window?.rootViewController = TrailRideBridgeViewController()') ||
     !plugin.includes('requestWhenInUseAuthorization()') ||
     !plugin.includes('requestLocation()') ||
     !viewController.includes('registerPluginInstance(TrailRideLocationPlugin())')) {
   throw new Error('Dedicated TrailRide CoreLocation plugin configuration failed');
 }
-console.log('Verified dedicated TrailRideLocation native permission and GPS plugin.');
+console.log('Verified forced TrailRide bridge controller with native permission and GPS plugin.');
