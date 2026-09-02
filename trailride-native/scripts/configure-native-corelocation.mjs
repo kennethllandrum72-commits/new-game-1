@@ -2,54 +2,155 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const root = resolve(import.meta.dirname, '..');
-const appDelegate = resolve(root, 'ios', 'App', 'App', 'AppDelegate.swift');
+const appDir = resolve(root, 'ios', 'App', 'App');
+const appDelegate = resolve(appDir, 'AppDelegate.swift');
+const projectFile = resolve(root, 'ios', 'App', 'App.xcodeproj', 'project.pbxproj');
+const pluginFile = resolve(appDir, 'TrailRideLocationPlugin.swift');
+const viewControllerFile = resolve(appDir, 'TrailRideBridgeViewController.swift');
 
-if (!existsSync(appDelegate)) {
-  throw new Error(`AppDelegate.swift not found at ${appDelegate}`);
+for (const file of [appDelegate, projectFile]) {
+  if (!existsSync(file)) throw new Error(`Required iOS file not found at ${file}`);
 }
 
-let s = readFileSync(appDelegate, 'utf8');
+const plugin = `import Foundation
+import Capacitor
+import CoreLocation
 
-if (!s.includes('import CoreLocation')) {
-  s = s.replace('import UIKit', 'import UIKit\nimport CoreLocation');
+@objc(TrailRideLocationPlugin)
+public class TrailRideLocationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManagerDelegate {
+    public let identifier = "TrailRideLocationPlugin"
+    public let jsName = "TrailRideLocation"
+    public let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "getStatus", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "requestWhenInUse", returnType: CAPPluginReturnPromise)
+    ]
+
+    private let locationManager = CLLocationManager()
+    private var pendingPermissionCall: CAPPluginCall?
+
+    public override func load() {
+        super.load()
+        locationManager.delegate = self
+        locationManager.desiredAccuracy = kCLLocationAccuracyHundredMeters
+    }
+
+    private func statusString(_ status: CLAuthorizationStatus) -> String {
+        switch status {
+        case .notDetermined: return "notDetermined"
+        case .restricted: return "restricted"
+        case .denied: return "denied"
+        case .authorizedAlways: return "authorizedAlways"
+        case .authorizedWhenInUse: return "authorizedWhenInUse"
+        @unknown default: return "unknown"
+        }
+    }
+
+    private func result() -> [String: Any] {
+        return [
+            "status": statusString(locationManager.authorizationStatus),
+            "servicesEnabled": CLLocationManager.locationServicesEnabled()
+        ]
+    }
+
+    @objc func getStatus(_ call: CAPPluginCall) {
+        DispatchQueue.main.async { call.resolve(self.result()) }
+    }
+
+    @objc func requestWhenInUse(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            guard CLLocationManager.locationServicesEnabled() else {
+                call.resolve(self.result())
+                return
+            }
+            guard self.locationManager.authorizationStatus == .notDetermined else {
+                call.resolve(self.result())
+                return
+            }
+            self.pendingPermissionCall = call
+            self.bridge?.saveCall(call)
+            self.locationManager.requestWhenInUseAuthorization()
+        }
+    }
+
+    public func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        guard manager.authorizationStatus != .notDetermined,
+              let call = pendingPermissionCall else { return }
+        call.resolve(result())
+        bridge?.releaseCall(call)
+        pendingPermissionCall = nil
+    }
 }
+`;
 
-if (!s.includes('trailRideLocationManager')) {
-  s = s.replace(
-    'class AppDelegate: UIResponder, UIApplicationDelegate {',
-    'class AppDelegate: UIResponder, UIApplicationDelegate {\n\n    private let trailRideLocationManager = CLLocationManager()'
-  );
+const viewController = `import UIKit
+import Capacitor
+
+@objc(TrailRideBridgeViewController)
+class TrailRideBridgeViewController: CAPBridgeViewController {
+    override open func capacitorDidLoad() {
+        super.capacitorDidLoad()
+        bridge?.registerPluginInstance(TrailRideLocationPlugin())
+    }
 }
+`;
 
-// Configure CoreLocation and listen for the app becoming active. On modern
-// scene-based iOS apps, relying only on UIApplicationDelegate's
-// applicationDidBecomeActive callback can be unreliable, so use the system
-// didBecomeActive notification as the permission trigger.
-if (!s.includes('TRAILRIDE_NATIVE_LOCATION_SETUP')) {
-  const marker = `        // TRAILRIDE_NATIVE_LOCATION_SETUP\n        trailRideLocationManager.desiredAccuracy = kCLLocationAccuracyHundredMeters\n        NotificationCenter.default.addObserver(\n            forName: UIApplication.didBecomeActiveNotification,\n            object: nil,\n            queue: .main\n        ) { [weak self] _ in\n            guard let self = self else { return }\n            guard CLLocationManager.locationServicesEnabled() else { return }\n            if self.trailRideLocationManager.authorizationStatus == .notDetermined {\n                self.trailRideLocationManager.requestWhenInUseAuthorization()\n            }\n        }\n`;
-  const launchSignature = 'func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {';
-  const launchIndex = s.indexOf(launchSignature);
-  if (launchIndex < 0) throw new Error('Could not find didFinishLaunchingWithOptions in AppDelegate.swift');
-  const returnIndex = s.indexOf('return true', launchIndex);
-  if (returnIndex < 0) throw new Error('Could not find return true in didFinishLaunchingWithOptions');
-  s = s.slice(0, returnIndex) + marker + s.slice(returnIndex);
+writeFileSync(pluginFile, plugin);
+writeFileSync(viewControllerFile, viewController);
+
+// Remove previous AppDelegate CoreLocation experiments. Permission is now
+// requested only when the user taps Near Me through TrailRideLocationPlugin.
+let app = readFileSync(appDelegate, 'utf8');
+app = app.replace(/\nimport CoreLocation/g, '');
+app = app.replace(/\n\s*private let trailRideLocationManager = CLLocationManager\(\)/g, '');
+app = app.replace(/\s*\/\/ TRAILRIDE_NATIVE_LOCATION_SETUP[\s\S]*?(?=\s*return true)/g, '\n        ');
+app = app.replace(/\s*\/\/ TRAILRIDE_NATIVE_LOCATION_FOREGROUND_REQUEST[\s\S]*?(?=\n\s*})/g, '');
+writeFileSync(appDelegate, app);
+
+// Add the two generated Swift sources to the App target. Capacitor regenerates
+// ios/ in Codemagic, so this script makes the Xcode project deterministic.
+let pbx = readFileSync(projectFile, 'utf8');
+const pluginRef = 'A1B2C3D4E5F6000000000001';
+const pluginBuild = 'A1B2C3D4E5F6000000000002';
+const vcRef = 'A1B2C3D4E5F6000000000003';
+const vcBuild = 'A1B2C3D4E5F6000000000004';
+
+if (!pbx.includes('TrailRideLocationPlugin.swift in Sources')) {
+  pbx = pbx.replace('/* Begin PBXBuildFile section */', `/* Begin PBXBuildFile section */\n\t\t${pluginBuild} /* TrailRideLocationPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = ${pluginRef} /* TrailRideLocationPlugin.swift */; };\n\t\t${vcBuild} /* TrailRideBridgeViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = ${vcRef} /* TrailRideBridgeViewController.swift */; };`);
+  pbx = pbx.replace('/* Begin PBXFileReference section */', `/* Begin PBXFileReference section */\n\t\t${pluginRef} /* TrailRideLocationPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrailRideLocationPlugin.swift; sourceTree = "<group>"; };\n\t\t${vcRef} /* TrailRideBridgeViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrailRideBridgeViewController.swift; sourceTree = "<group>"; };`);
+
+  const appGroup = pbx.match(/([A-F0-9]{24}) \/\* App \*\/ = \{\n\s*isa = PBXGroup;\n\s*children = \(/);
+  if (!appGroup) throw new Error('Could not locate App PBXGroup');
+  const childNeedle = `${appGroup[1]} /* App */ = {`;
+  const groupStart = pbx.indexOf(childNeedle);
+  const childrenStart = pbx.indexOf('children = (', groupStart) + 'children = ('.length;
+  pbx = pbx.slice(0, childrenStart) + `\n\t\t\t\t${pluginRef} /* TrailRideLocationPlugin.swift */,\n\t\t\t\t${vcRef} /* TrailRideBridgeViewController.swift */,` + pbx.slice(childrenStart);
+
+  const sources = pbx.match(/([A-F0-9]{24}) \/\* Sources \*\/ = \{\n\s*isa = PBXSourcesBuildPhase;\n\s*buildActionMask = \d+;\n\s*files = \(/);
+  if (!sources) throw new Error('Could not locate PBXSourcesBuildPhase');
+  const filesStart = sources.index + sources[0].length;
+  pbx = pbx.slice(0, filesStart) + `\n\t\t\t\t${pluginBuild} /* TrailRideLocationPlugin.swift in Sources */,\n\t\t\t\t${vcBuild} /* TrailRideBridgeViewController.swift in Sources */,` + pbx.slice(filesStart);
 }
+writeFileSync(projectFile, pbx);
 
-// Remove the older applicationDidBecomeActive injection if this script is run
-// against a generated project that already contains it. The notification-based
-// path above is now the single source of the authorization request.
-const oldMarker = `\n        // TRAILRIDE_NATIVE_LOCATION_FOREGROUND_REQUEST\n        if CLLocationManager.locationServicesEnabled() && trailRideLocationManager.authorizationStatus == .notDetermined {\n            trailRideLocationManager.requestWhenInUseAuthorization()\n        }`;
-s = s.replace(oldMarker, '');
+// Capacitor's generated storyboard uses CAPBridgeViewController. Point it to
+// our subclass so the local plugin is explicitly registered with the bridge.
+const storyboardCandidates = [
+  resolve(appDir, 'Base.lproj', 'Main.storyboard'),
+  resolve(appDir, 'Main.storyboard')
+];
+const storyboard = storyboardCandidates.find(existsSync);
+if (!storyboard) throw new Error('Main.storyboard not found');
+let story = readFileSync(storyboard, 'utf8');
+story = story.replace(/customClass="CAPBridgeViewController"(?: customModule="Capacitor")?/, 'customClass="TrailRideBridgeViewController" customModule="App" customModuleProvider="target"');
+writeFileSync(storyboard, story);
 
-writeFileSync(appDelegate, s);
-
-const verify = readFileSync(appDelegate, 'utf8');
-const requestCount = (verify.match(/requestWhenInUseAuthorization\(\)/g) || []).length;
-if (!verify.includes('import CoreLocation') ||
-    !verify.includes('UIApplication.didBecomeActiveNotification') ||
-    !verify.includes('trailRideLocationManager') ||
-    requestCount !== 1) {
-  throw new Error(`Native CoreLocation notification authorization injection failed; request count=${requestCount}`);
+const verifyPbx = readFileSync(projectFile, 'utf8');
+const verifyStory = readFileSync(storyboard, 'utf8');
+if (!verifyPbx.includes('TrailRideLocationPlugin.swift in Sources') ||
+    !verifyPbx.includes('TrailRideBridgeViewController.swift in Sources') ||
+    !verifyStory.includes('customClass="TrailRideBridgeViewController"') ||
+    !plugin.includes('requestWhenInUseAuthorization()') ||
+    !viewController.includes('registerPluginInstance(TrailRideLocationPlugin())')) {
+  throw new Error('Dedicated TrailRide CoreLocation plugin configuration failed');
 }
-
-console.log('Verified CoreLocation When-In-Use request from UIApplication.didBecomeActiveNotification.');
+console.log('Verified dedicated TrailRideLocation native plugin and bridge registration.');
