@@ -22,14 +22,15 @@ public class TrailRideLocationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationMan
     public let jsName = "TrailRideLocation"
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "getStatus", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "requestWhenInUse", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "requestWhenInUse", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getCurrentPosition", returnType: CAPPluginReturnPromise)
     ]
 
     private let locationManager = CLLocationManager()
     private var pendingPermissionCall: CAPPluginCall?
+    private var pendingLocationCall: CAPPluginCall?
 
     public override func load() {
-        super.load()
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyHundredMeters
     }
@@ -45,7 +46,7 @@ public class TrailRideLocationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationMan
         }
     }
 
-    private func result() -> [String: Any] {
+    private func statusResult() -> [String: Any] {
         return [
             "status": statusString(locationManager.authorizationStatus),
             "servicesEnabled": CLLocationManager.locationServicesEnabled()
@@ -53,31 +54,74 @@ public class TrailRideLocationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationMan
     }
 
     @objc func getStatus(_ call: CAPPluginCall) {
-        DispatchQueue.main.async { call.resolve(self.result()) }
+        DispatchQueue.main.async {
+            call.resolve(self.statusResult())
+        }
     }
 
     @objc func requestWhenInUse(_ call: CAPPluginCall) {
         DispatchQueue.main.async {
             guard CLLocationManager.locationServicesEnabled() else {
-                call.resolve(self.result())
+                call.resolve(self.statusResult())
                 return
             }
-            guard self.locationManager.authorizationStatus == .notDetermined else {
-                call.resolve(self.result())
+
+            let status = self.locationManager.authorizationStatus
+            guard status == .notDetermined else {
+                call.resolve(self.statusResult())
                 return
             }
+
             self.pendingPermissionCall = call
             self.bridge?.saveCall(call)
             self.locationManager.requestWhenInUseAuthorization()
         }
     }
 
+    @objc func getCurrentPosition(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            guard CLLocationManager.locationServicesEnabled() else {
+                call.reject("Location services are disabled")
+                return
+            }
+
+            let status = self.locationManager.authorizationStatus
+            guard status == .authorizedWhenInUse || status == .authorizedAlways else {
+                call.reject("Location permission is not granted: \\(self.statusString(status))")
+                return
+            }
+
+            self.pendingLocationCall = call
+            self.bridge?.saveCall(call)
+            self.locationManager.requestLocation()
+        }
+    }
+
     public func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         guard manager.authorizationStatus != .notDetermined,
               let call = pendingPermissionCall else { return }
-        call.resolve(result())
+        call.resolve(statusResult())
         bridge?.releaseCall(call)
         pendingPermissionCall = nil
+    }
+
+    public func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        guard let call = pendingLocationCall, let location = locations.last else { return }
+        call.resolve([
+            "latitude": location.coordinate.latitude,
+            "longitude": location.coordinate.longitude,
+            "accuracy": location.horizontalAccuracy,
+            "timestamp": location.timestamp.timeIntervalSince1970 * 1000
+        ])
+        bridge?.releaseCall(call)
+        pendingLocationCall = nil
+    }
+
+    public func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        guard let call = pendingLocationCall else { return }
+        call.reject("CoreLocation failed: \\(error.localizedDescription)")
+        bridge?.releaseCall(call)
+        pendingLocationCall = nil
     }
 }
 `;
@@ -96,8 +140,6 @@ class TrailRideBridgeViewController: CAPBridgeViewController {
 writeFileSync(pluginFile, plugin);
 writeFileSync(viewControllerFile, viewController);
 
-// Remove previous AppDelegate CoreLocation experiments. Permission is now
-// requested only when the user taps Near Me through TrailRideLocationPlugin.
 let app = readFileSync(appDelegate, 'utf8');
 app = app.replace(/\nimport CoreLocation/g, '');
 app = app.replace(/\n\s*private let trailRideLocationManager = CLLocationManager\(\)/g, '');
@@ -105,8 +147,6 @@ app = app.replace(/\s*\/\/ TRAILRIDE_NATIVE_LOCATION_SETUP[\s\S]*?(?=\s*return t
 app = app.replace(/\s*\/\/ TRAILRIDE_NATIVE_LOCATION_FOREGROUND_REQUEST[\s\S]*?(?=\n\s*})/g, '');
 writeFileSync(appDelegate, app);
 
-// Add the two generated Swift sources to the App target. Capacitor regenerates
-// ios/ in Codemagic, so this script makes the Xcode project deterministic.
 let pbx = readFileSync(projectFile, 'utf8');
 const pluginRef = 'A1B2C3D4E5F6000000000001';
 const pluginBuild = 'A1B2C3D4E5F6000000000002';
@@ -131,8 +171,6 @@ if (!pbx.includes('TrailRideLocationPlugin.swift in Sources')) {
 }
 writeFileSync(projectFile, pbx);
 
-// Capacitor's generated storyboard uses CAPBridgeViewController. Point it to
-// our subclass so the local plugin is explicitly registered with the bridge.
 const storyboardCandidates = [
   resolve(appDir, 'Base.lproj', 'Main.storyboard'),
   resolve(appDir, 'Main.storyboard')
@@ -149,8 +187,8 @@ if (!verifyPbx.includes('TrailRideLocationPlugin.swift in Sources') ||
     !verifyPbx.includes('TrailRideBridgeViewController.swift in Sources') ||
     !verifyStory.includes('customClass="TrailRideBridgeViewController"') ||
     !plugin.includes('requestWhenInUseAuthorization()') ||
-    !viewController.includes('registerPluginInstance(TrailRideLocationPlugin())') ||
-    viewController.includes('super.capacitorDidLoad()')) {
+    !plugin.includes('requestLocation()') ||
+    !viewController.includes('registerPluginInstance(TrailRideLocationPlugin())')) {
   throw new Error('Dedicated TrailRide CoreLocation plugin configuration failed');
 }
-console.log('Verified dedicated TrailRideLocation native plugin registration before Capacitor plugin finalization.');
+console.log('Verified dedicated TrailRideLocation native permission and GPS plugin.');
