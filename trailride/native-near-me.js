@@ -4,7 +4,7 @@
   if(!btn)return;
 
   const isNative=()=>{try{return !!window.Capacitor?.isNativePlatform?.()}catch{return false}};
-  const capGeo=()=>window.TrailRideNative?.Geolocation||window.Capacitor?.Plugins?.Geolocation||null;
+  const nativeLoc=()=>window.TrailRideNative?.Location||null;
   const timeout=(promise,ms,label='Location timed out')=>Promise.race([
     Promise.resolve(promise),
     new Promise((_,reject)=>setTimeout(()=>reject(new Error(label)),ms))
@@ -27,38 +27,39 @@
   }
 
   async function ensureNativePermission(){
-    const geo=capGeo();
-    if(!geo?.checkPermissions||!geo?.requestPermissions)throw new Error('Native geolocation plugin unavailable');
-    let s=await timeout(geo.checkPermissions(),5000,'permission status timeout');
-    setStatus(`iOS location permission: ${s?.location||'unknown'}`);
-    if(s?.location==='prompt'||s?.location==='prompt-with-rationale'){
+    const locPlugin=nativeLoc();
+    if(!locPlugin?.getStatus||!locPlugin?.requestWhenInUse)throw new Error('TrailRide native location plugin unavailable');
+
+    let s=await timeout(locPlugin.getStatus(),5000,'native permission status timeout');
+    setStatus(`Native iOS location status: ${s?.status||'unknown'}`);
+
+    if(s?.servicesEnabled===false)throw new Error('iPhone Location Services are turned off.');
+
+    if(s?.status==='notDetermined'){
       setStatus('iOS is requesting location permission…');
-      s=await timeout(geo.requestPermissions({permissions:['location']}),30000,'iOS permission prompt timeout');
+      s=await timeout(locPlugin.requestWhenInUse(),30000,'native iOS permission callback timeout');
     }
-    if(s?.location==='denied'){
-      throw new Error('iOS location permission denied. Enable While Using the App in Settings.');
+
+    if(s?.status==='denied'||s?.status==='restricted'){
+      throw new Error(`iOS location permission ${s.status}. Enable While Using the App in Settings.`);
     }
-    if(s?.location!=='granted'){
-      throw new Error(`iOS location permission did not complete: ${s?.location||'unknown'}`);
+    if(s?.status!=='authorizedWhenInUse'&&s?.status!=='authorizedAlways'){
+      throw new Error(`iOS location permission did not complete: ${s?.status||'unknown'}`);
     }
     return s;
   }
 
   async function capacitorPosition(){
-    const geo=capGeo();
-    if(!geo?.getCurrentPosition)throw new Error('Native geolocation bridge unavailable');
+    const locPlugin=nativeLoc();
+    if(!locPlugin?.getCurrentPosition)throw new Error('TrailRide native GPS method unavailable');
     const granted=await ensureNativePermission();
-    setStatus('iOS permission granted. Getting GPS…');
+    setStatus(`iOS permission ${granted.status}. Getting native GPS…`);
     try{
-      const pos=await timeout(
-        geo.getCurrentPosition({enableHighAccuracy:false,timeout:30000,maximumAge:60000}),
-        32000,
-        'native GPS timeout'
-      );
+      const pos=await timeout(locPlugin.getCurrentPosition(),32000,'native CoreLocation GPS timeout');
       return normalize(pos);
     }catch(e){
       const d=await diagnostic();
-      throw new Error(`permission=${d?.location||granted.location||'unknown'} • GPS=${errText(e)}`);
+      throw new Error(`native=${d?.nativeStatus||granted.status||'unknown'} • services=${d?.servicesEnabled} • GPS=${errText(e)}`);
     }
   }
 
@@ -78,7 +79,7 @@
   async function useLocation(){
     const old=btn.textContent;
     btn.disabled=true;btn.textContent='📍 Finding you…';
-    setStatus(`Location diagnostic: native=${isNative()?'yes':'no'} • geolocation=${capGeo()?'yes':'no'}`);
+    setStatus(`Location diagnostic: native=${isNative()?'yes':'no'} • TrailRide plugin=${nativeLoc()?'yes':'no'}`);
     try{
       const p=await getPosition(),c=p.coords;
       mode='near';searchText='';trailData.clear();
@@ -91,7 +92,9 @@
       document.getElementById('trailList')?.scrollIntoView({behavior:'smooth',block:'start'});
     }catch(err){
       console.error('TrailRide Near Me location error',err);
-      setStatus(`Location diagnostic error: ${errText(err)}`);
+      const d=await diagnostic();
+      const diag=d?` • nativeStatus=${d.nativeStatus||'unknown'} • services=${d.servicesEnabled} • custom=${d.customPlugin?'yes':'no'}`:'';
+      setStatus(`Location diagnostic error: ${errText(err)}${diag}`);
     }finally{
       btn.disabled=false;btn.textContent=old||'📍 Near Me';
     }
