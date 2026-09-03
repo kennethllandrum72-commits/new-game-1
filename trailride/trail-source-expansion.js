@@ -1,0 +1,17 @@
+(()=>{
+ const extra=[
+  {name:'Atlanta BeltLine',city:'Atlanta',state:'Georgia',mi:16.7,d:['beginner'],type:'Paved multi-use / greenway',lat:33.7554,lon:-84.3697,status:'https://beltline.org/'},
+  {name:'Big Creek Greenway',city:'Roswell • Alpharetta • Forsyth County',state:'Georgia',mi:20,d:['beginner'],type:'Paved multi-use / greenway',lat:34.0738,lon:-84.2941,status:'https://www.google.com/search?q=Big+Creek+Greenway+Georgia'},
+  {name:'Arabia Mountain PATH',city:'Lithonia',state:'Georgia',mi:30,d:['beginner','intermediate'],type:'Paved multi-use / greenway',lat:33.6676,lon:-84.1148,status:'https://www.google.com/search?q=Arabia+Mountain+PATH+trail'},
+  {name:'South Peachtree Creek Trail',city:'Atlanta • Decatur',state:'Georgia',mi:3.6,d:['beginner'],type:'Paved multi-use / greenway',lat:33.8019,lon:-84.3236,status:'https://www.google.com/search?q=South+Peachtree+Creek+Trail'},
+  {name:'Peachtree Creek Greenway',city:'Brookhaven',state:'Georgia',mi:3,d:['beginner'],type:'Paved multi-use / greenway',lat:33.8605,lon:-84.3350,status:'https://www.google.com/search?q=Peachtree+Creek+Greenway'},
+  {name:'Noonday Creek Trail',city:'Kennesaw • Woodstock',state:'Georgia',mi:8,d:['beginner'],type:'Paved multi-use / greenway',lat:34.0245,lon:-84.5968,status:'https://www.google.com/search?q=Noonday+Creek+Trail'},
+  {name:'Chief Ladiga Trail',city:'Anniston • Piedmont',state:'Alabama',mi:33,d:['beginner'],type:'Paved multi-use / rail trail',lat:33.6598,lon:-85.8316,status:'https://www.google.com/search?q=Chief+Ladiga+Trail'},
+  {name:'Tanglefoot Trail',city:'New Albany • Houston',state:'Mississippi',mi:43.6,d:['beginner'],type:'Paved multi-use / rail trail',lat:34.4943,lon:-89.0078,status:'https://www.google.com/search?q=Tanglefoot+Trail'}
+ ];
+ const key=s=>String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+ function merge(){if(!Array.isArray(window.trails)&&typeof trails==='undefined')return;let arr=typeof trails!=='undefined'?trails:window.trails,seen=new Set(arr.map(t=>key(t.name)));for(const t of extra){if(!seen.has(key(t.name))){arr.push({...t,source:'TrailRide verified'});seen.add(key(t.name))}}try{populateTrails?.()}catch{}}
+ function broadenOverpass(){let old=window.fetch;if(old.__trailrideBroadened)return;async function wrapped(input,init={}){let url=String(input?.url||input||''),body=String(init?.body||'');if(url.includes('overpass-api.de/api/interpreter')&&body){body=body.replace(/way\(around:([^)]*)\)\[highway=cycleway\]\[name\];/g,'way(around:$1)[highway=cycleway][name];way(around:$1)[highway=path][bicycle=designated][name];way(around:$1)[highway=path][bicycle=yes][name];way(around:$1)[highway=footway][bicycle=designated][name];way(around:$1)[cycleway][name];').replace(/way\(area\.a\)\[highway=cycleway\]\[name\];/g,'way(area.a)[highway=cycleway][name];way(area.a)[highway=path][bicycle=designated][name];way(area.a)[highway=path][bicycle=yes][name];way(area.a)[highway=footway][bicycle=designated][name];way(area.a)[cycleway][name];');init={...init,body}}return old(input,init)}wrapped.__trailrideBroadened=true;window.fetch=wrapped}
+ function labelSources(){let box=document.querySelector('.sectionHead .eyebrow');if(box&&/nearby trails/i.test(box.textContent))box.textContent='MULTI-SOURCE TRAIL DISCOVERY'}
+ broadenOverpass();document.readyState==='loading'?document.addEventListener('DOMContentLoaded',()=>{merge();labelSources()}):setTimeout(()=>{merge();labelSources()},0);window.addEventListener('trailride:activitychange',merge);setInterval(merge,4000);
+})();
