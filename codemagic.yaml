@@ -54,12 +54,12 @@ workflows:
           grep -n "TrailRideLocationPlugin.swift in Sources" ios/App/App.xcodeproj/project.pbxproj
           grep -n "TrailRideBridgeViewController.swift in Sources" ios/App/App.xcodeproj/project.pbxproj
           grep -n "TrailRideLocation = registerPlugin('TrailRideLocation')" scripts/native-bridge.js
-          grep -n "requestWhenInUse" ../trailride/native-near-me.js
+          grep -n "navigator.geolocation.getCurrentPosition" ../trailride/native-near-me.js
           if /usr/libexec/PlistBuddy -c "Print :NSLocationAlwaysAndWhenInUseUsageDescription" ios/App/App/Info.plist >/dev/null 2>&1; then
             echo "Unexpected Always permission found"
             exit 1
           fi
-          echo "Forced native bridge controller, CoreLocation permission, and GPS path verified"
+          echo "Foreground iOS permission plus webview Near Me geolocation path verified"
       - name: Compile iOS without upload
         script: |
           cd trailride-native
@@ -106,18 +106,14 @@ workflows:
           BUILD_NUM="${BUILD_NUMBER:-2}"
           sed -i '' -E "s/CURRENT_PROJECT_VERSION = [0-9]+;/CURRENT_PROJECT_VERSION = ${BUILD_NUM};/g" ios/App/App.xcodeproj/project.pbxproj
           echo "Using iOS build number ${BUILD_NUM}"
-      - name: Verify release native bridge before signing
+      - name: Verify release location path before signing
         script: |
           set -e
           cd trailride-native
           echo "Release usage description:"
           /usr/libexec/PlistBuddy -c "Print :NSLocationWhenInUseUsageDescription" ios/App/App/Info.plist
-          grep -n "class TrailRideLocationPlugin" ios/App/App/TrailRideLocationPlugin.swift
-          grep -n "requestWhenInUseAuthorization" ios/App/App/TrailRideLocationPlugin.swift
-          grep -n "requestLocation()" ios/App/App/TrailRideLocationPlugin.swift
-          grep -n "registerPluginInstance(TrailRideLocationPlugin())" ios/App/App/TrailRideBridgeViewController.swift
+          grep -n "navigator.geolocation.getCurrentPosition" ../trailride/native-near-me.js
           grep -n "TRAILRIDE_FORCE_BRIDGE_CONTROLLER" ios/App/App/AppDelegate.swift
-          grep -n "window?.rootViewController = TrailRideBridgeViewController()" ios/App/App/AppDelegate.swift
           STORYBOARD=""
           if [ -f ios/App/App/Base.lproj/Main.storyboard ]; then
             STORYBOARD="ios/App/App/Base.lproj/Main.storyboard"
@@ -129,17 +125,14 @@ workflows:
           fi
           echo "Using storyboard: $STORYBOARD"
           grep -n 'customClass="TrailRideBridgeViewController"' "$STORYBOARD"
-          grep -n "TrailRideLocationPlugin.swift in Sources" ios/App/App.xcodeproj/project.pbxproj
-          grep -n "TrailRideBridgeViewController.swift in Sources" ios/App/App.xcodeproj/project.pbxproj
-          grep -n "TrailRideLocation = registerPlugin('TrailRideLocation')" scripts/native-bridge.js
-          echo "Release native bridge verified before signing"
+          echo "Release webview Near Me location path verified before signing"
       - name: Set up iOS code signing
         script: |
           xcode-project use-profiles --project "$XCODE_WORKSPACE" --archive-method app-store --custom-export-options='{"testFlightInternalTestingOnly": true}' --code-signing-setup-verbose-logging
       - name: Build IPA
         script: |
           xcode-project build-ipa --project "$XCODE_WORKSPACE" --scheme "$XCODE_SCHEME"
-      - name: Verify built IPA native bridge
+      - name: Verify built IPA location configuration
         script: |
           set -e
           IPA_PATH=$(find "$CM_BUILD_DIR" -type f -name "*.ipa" -print -quit)
@@ -160,15 +153,7 @@ workflows:
           fi
           echo "Built app: $APP_PATH"
           /usr/libexec/PlistBuddy -c "Print :NSLocationWhenInUseUsageDescription" "$APP_PATH/Info.plist"
-          EXECUTABLE=$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$APP_PATH/Info.plist")
-          APP_BIN="$APP_PATH/$EXECUTABLE"
-          if [ -z "$EXECUTABLE" ] || [ ! -f "$APP_BIN" ]; then
-            echo "Built app executable missing"
-            exit 1
-          fi
-          strings "$APP_BIN" | grep -q "TrailRideLocationPlugin"
-          strings "$APP_BIN" | grep -q "TrailRideBridgeViewController"
-          echo "Built IPA contains TrailRide native plugin and bridge controller"
+          echo "Built IPA contains required iOS location usage description"
     artifacts:
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
