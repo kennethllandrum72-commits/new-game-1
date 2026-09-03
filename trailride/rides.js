@@ -15,10 +15,11 @@
  function scanCards(){document.querySelectorAll('#trailList .trail').forEach(decorateCard)}
  function button(text,cls='miniBtn'){let b=document.createElement('button');b.className=cls;b.textContent=text;return b}
  function renderRecorded(dash,sessions){
-  if(!sessions.length){dash.innerHTML='<div class="rideEmpty">No GPS rides saved yet. Start GPS, record an activity, then tap “Stop & Save.” Your ride will appear here.</div>';return}
+  if(!sessions.length){dash.innerHTML='<div class="rideEmpty">No GPS rides saved yet. Start GPS, record an activity, then tap “Finish & Save.” Your ride will appear here.</div>';return}
   sessions.forEach(session=>{
    let row=document.createElement('div');row.className='rideItem recordedRideItem';
-   let text=document.createElement('div');let title=document.createElement('strong');title.textContent=`${activityLabel(session.activity)} • ${(Number(session.distance)||0).toFixed(2)} mi`;let sub=document.createElement('small');sub.textContent=`${fmtDate(session.started||session.id)} • ${fmtDuration((session.ended||session.started)-(session.started||session.id))} • ${session.points?.length||0} GPS points`;text.append(title,sub);
+   let text=document.createElement('div');let title=document.createElement('strong');title.textContent=`${activityLabel(session.activity)} • ${(Number(session.distance)||0).toFixed(2)} mi`;
+   let duration=Number(session.duration)||((session.ended||session.started)-(session.started||session.id));let sub=document.createElement('small');let speedBits=[];if(Number.isFinite(Number(session.avgSpeed)))speedBits.push(`Avg ${Number(session.avgSpeed).toFixed(1)} mph`);if(Number.isFinite(Number(session.maxSpeed)))speedBits.push(`Max ${Number(session.maxSpeed).toFixed(1)} mph`);sub.textContent=`${fmtDate(session.started||session.id)} • ${fmtDuration(duration)}${speedBits.length?' • '+speedBits.join(' • '):''} • ${session.points?.length||0} GPS points`;text.append(title,sub);
    let acts=document.createElement('div');acts.className='rideItemActions';
    let route=button('View Route');route.onclick=()=>showRoute(row,session,route);
    let del=button('Delete','miniBtn remove');del.onclick=()=>{if(!confirm('Delete this recorded ride?'))return;let next=gpsSessions().filter(x=>String(x.id)!==String(session.id));localStorage.setItem(gpsKey,JSON.stringify(next));renderDashboard()};
