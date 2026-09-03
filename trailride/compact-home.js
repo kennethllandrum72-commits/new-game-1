@@ -21,29 +21,57 @@
   document.querySelectorAll('.modernNav button').forEach(b=>{if(b.dataset.go==='search')b.onclick=()=>{if(!advanced.classList.contains('open'))btn.click();setTimeout(()=>document.getElementById('trailSearch')?.focus(),150)}});
  }
 
- // iPhone/WKWebView fix: the details sheet could inherit a stale scroll offset,
- // leaving a large blank area and making the app appear broken.
  const overlay=document.getElementById('detailOverlay');
  const sheet=overlay?.querySelector('.detailSheet');
+ const closeBtn=document.getElementById('detailClose');
  if(overlay&&sheet){
-  const resetDetails=()=>{
+  const openFix=()=>{
    if(overlay.classList.contains('hidden'))return;
-   sheet.scrollTop=0;
-   overlay.scrollTop=0;
    overlay.style.position='fixed';
    overlay.style.inset='0';
-   overlay.style.zIndex='9999';
-   overlay.style.alignItems='flex-end';
-   sheet.style.maxHeight='calc(100dvh - env(safe-area-inset-top) - 12px)';
+   overlay.style.zIndex='99999';
+   overlay.style.display='block';
+   overlay.style.overflow='hidden';
+   overlay.style.background='#071416';
+   sheet.style.position='fixed';
+   sheet.style.left='0';
+   sheet.style.right='0';
+   sheet.style.top='env(safe-area-inset-top)';
+   sheet.style.bottom='0';
+   sheet.style.width='100%';
+   sheet.style.maxWidth='none';
+   sheet.style.height='auto';
+   sheet.style.maxHeight='none';
+   sheet.style.margin='0';
+   sheet.style.borderRadius='0';
    sheet.style.overflowY='auto';
    sheet.style.webkitOverflowScrolling='touch';
+   sheet.style.paddingTop='14px';
+   sheet.style.paddingBottom='calc(96px + env(safe-area-inset-bottom))';
+   sheet.scrollTop=0;
+   overlay.scrollTop=0;
+   document.body.style.overflow='hidden';
+   if(closeBtn){
+    closeBtn.style.position='sticky';
+    closeBtn.style.top='0';
+    closeBtn.style.zIndex='100001';
+   }
+  };
+  const closeFix=()=>{
+   document.body.style.overflow='';
   };
   document.addEventListener('click',e=>{
    if(e.target.closest('.detailsBtn')){
-    requestAnimationFrame(()=>requestAnimationFrame(resetDetails));
-    setTimeout(resetDetails,80);
+    requestAnimationFrame(()=>requestAnimationFrame(openFix));
+    setTimeout(openFix,80);
+   }
+   if(e.target===overlay||e.target.closest('#detailClose')){
+    closeFix();
    }
   },true);
-  new MutationObserver(resetDetails).observe(overlay,{attributes:true,attributeFilter:['class']});
+  new MutationObserver(()=>{
+   if(overlay.classList.contains('hidden')) closeFix();
+   else openFix();
+  }).observe(overlay,{attributes:true,attributeFilter:['class']});
  }
 })();
