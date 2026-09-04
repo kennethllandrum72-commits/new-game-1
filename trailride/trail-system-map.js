@@ -3,8 +3,10 @@
  const key=s=>String(s||'').trim().toLowerCase();
  function findTrail(name){try{return (typeof trails!=='undefined'?trails:[]).find(t=>key(t.name)===key(name))||null}catch{return null}}
  function addButtons(){document.querySelectorAll('#trailList .trail').forEach(card=>{
-  const actions=card.querySelector('.actions');if(!actions||actions.querySelector('.systemMapBtn'))return;
-  const btn=document.createElement('button');btn.className='btn systemMapBtn';btn.textContent='🗺 Trail Map';actions.insertBefore(btn,actions.children[1]||null);
+  const actions=card.querySelector('.actions');if(!actions)return;
+  if(!actions.querySelector('.startTrailRideBtn')){const ride=document.createElement('button');ride.className='btn primary startTrailRideBtn';ride.textContent='▶ Start Ride';actions.insertBefore(ride,actions.firstChild);ride.addEventListener('click',()=>{const name=card.querySelector('.trailName')?.textContent||'Trail',t=findTrail(name)||{name};window.dispatchEvent(new CustomEvent('trailride:start-trail-ride',{detail:{name:t.name||name,city:t.city||'',state:t.state||'',lat:t.lat,lon:t.lon}}))})}
+  if(actions.querySelector('.systemMapBtn'))return;
+  const btn=document.createElement('button');btn.className='btn systemMapBtn';btn.textContent='🗺 Trail Map';actions.insertBefore(btn,actions.children[2]||null);
   btn.addEventListener('click',()=>toggle(card,btn));
  })}
  async function toggle(card,btn){
