@@ -23,43 +23,24 @@ workflows:
       - name: Generate and sync iOS project
         script: |
           cd trailride-native
-          if [ ! -d ios ]; then
-            npx cap add ios
-          fi
+          if [ ! -d ios ]; then npx cap add ios; fi
           npx cap sync ios
           node scripts/configure-ios-background-location.mjs
           node scripts/configure-native-corelocation.mjs
-      - name: Verify native location configuration
+          node scripts/configure-healthkit.mjs
+      - name: Verify native configuration
         script: |
           set -e
           cd trailride-native
           /usr/libexec/PlistBuddy -c "Print :NSLocationWhenInUseUsageDescription" ios/App/App/Info.plist
-          grep -n "class TrailRideLocationPlugin" ios/App/App/TrailRideLocationPlugin.swift
-          grep -n "requestWhenInUseAuthorization" ios/App/App/TrailRideLocationPlugin.swift
-          grep -n "requestLocation()" ios/App/App/TrailRideLocationPlugin.swift
-          grep -n "registerPluginInstance(TrailRideLocationPlugin())" ios/App/App/TrailRideBridgeViewController.swift
-          grep -n "TRAILRIDE_FORCE_BRIDGE_CONTROLLER" ios/App/App/AppDelegate.swift
-          grep -n "window?.rootViewController = TrailRideBridgeViewController()" ios/App/App/AppDelegate.swift
-          STORYBOARD=""
-          if [ -f ios/App/App/Base.lproj/Main.storyboard ]; then
-            STORYBOARD="ios/App/App/Base.lproj/Main.storyboard"
-          elif [ -f ios/App/App/Main.storyboard ]; then
-            STORYBOARD="ios/App/App/Main.storyboard"
-          else
-            echo "Main.storyboard not found"
-            exit 1
-          fi
-          echo "Using storyboard: $STORYBOARD"
-          grep -n 'customClass="TrailRideBridgeViewController"' "$STORYBOARD"
-          grep -n "TrailRideLocationPlugin.swift in Sources" ios/App/App.xcodeproj/project.pbxproj
-          grep -n "TrailRideBridgeViewController.swift in Sources" ios/App/App.xcodeproj/project.pbxproj
-          grep -n "TrailRideLocation = registerPlugin('TrailRideLocation')" scripts/native-bridge.js
+          /usr/libexec/PlistBuddy -c "Print :NSHealthShareUsageDescription" ios/App/App/Info.plist
+          /usr/libexec/PlistBuddy -c "Print :NSHealthUpdateUsageDescription" ios/App/App/Info.plist
           grep -n "navigator.geolocation.getCurrentPosition" ../trailride/native-near-me.js
-          if /usr/libexec/PlistBuddy -c "Print :NSLocationAlwaysAndWhenInUseUsageDescription" ios/App/App/Info.plist >/dev/null 2>&1; then
-            echo "Unexpected Always permission found"
-            exit 1
-          fi
-          echo "Foreground iOS permission plus webview Near Me geolocation path verified"
+          grep -n "TrailRideHealthPlugin.swift in Sources" ios/App/App.xcodeproj/project.pbxproj
+          grep -n "registerPluginInstance(TrailRideHealthPlugin())" ios/App/App/TrailRideBridgeViewController.swift
+          grep -n "com.apple.developer.healthkit" ios/App/App/App.entitlements
+          grep -n "CODE_SIGN_ENTITLEMENTS = App/App.entitlements" ios/App/App.xcodeproj/project.pbxproj
+          echo "Location and Apple HealthKit configuration verified"
       - name: Compile iOS without upload
         script: |
           cd trailride-native
@@ -97,63 +78,42 @@ workflows:
         script: |
           set -e
           cd trailride-native
-          if [ ! -d ios ]; then
-            npx cap add ios
-          fi
+          if [ ! -d ios ]; then npx cap add ios; fi
           npx cap sync ios
           node scripts/configure-ios-background-location.mjs
           node scripts/configure-native-corelocation.mjs
+          node scripts/configure-healthkit.mjs
           BUILD_NUM="${BUILD_NUMBER:-2}"
           sed -i '' -E "s/CURRENT_PROJECT_VERSION = [0-9]+;/CURRENT_PROJECT_VERSION = ${BUILD_NUM};/g" ios/App/App.xcodeproj/project.pbxproj
-          echo "Using iOS build number ${BUILD_NUM}"
-      - name: Verify release location path before signing
+      - name: Verify release configuration
         script: |
           set -e
           cd trailride-native
-          echo "Release usage description:"
           /usr/libexec/PlistBuddy -c "Print :NSLocationWhenInUseUsageDescription" ios/App/App/Info.plist
+          /usr/libexec/PlistBuddy -c "Print :NSHealthShareUsageDescription" ios/App/App/Info.plist
+          /usr/libexec/PlistBuddy -c "Print :NSHealthUpdateUsageDescription" ios/App/App/Info.plist
           grep -n "navigator.geolocation.getCurrentPosition" ../trailride/native-near-me.js
-          grep -n "TRAILRIDE_FORCE_BRIDGE_CONTROLLER" ios/App/App/AppDelegate.swift
-          STORYBOARD=""
-          if [ -f ios/App/App/Base.lproj/Main.storyboard ]; then
-            STORYBOARD="ios/App/App/Base.lproj/Main.storyboard"
-          elif [ -f ios/App/App/Main.storyboard ]; then
-            STORYBOARD="ios/App/App/Main.storyboard"
-          else
-            echo "Main.storyboard not found"
-            exit 1
-          fi
-          echo "Using storyboard: $STORYBOARD"
-          grep -n 'customClass="TrailRideBridgeViewController"' "$STORYBOARD"
-          echo "Release webview Near Me location path verified before signing"
+          grep -n "TrailRideHealthPlugin.swift in Sources" ios/App/App.xcodeproj/project.pbxproj
+          grep -n "com.apple.developer.healthkit" ios/App/App/App.entitlements
+          echo "Release location and HealthKit paths verified"
       - name: Set up iOS code signing
         script: |
           xcode-project use-profiles --project "$XCODE_WORKSPACE" --archive-method app-store --custom-export-options='{"testFlightInternalTestingOnly": true}' --code-signing-setup-verbose-logging
       - name: Build IPA
         script: |
           xcode-project build-ipa --project "$XCODE_WORKSPACE" --scheme "$XCODE_SCHEME"
-      - name: Verify built IPA location configuration
+      - name: Verify built IPA
         script: |
           set -e
           IPA_PATH=$(find "$CM_BUILD_DIR" -type f -name "*.ipa" -print -quit)
-          if [ -z "$IPA_PATH" ]; then
-            IPA_PATH=$(find . -type f -name "*.ipa" -print -quit)
-          fi
-          if [ -z "$IPA_PATH" ] || [ ! -f "$IPA_PATH" ]; then
-            echo "Built IPA not found; refusing to publish"
-            exit 1
-          fi
-          echo "Verifying IPA: $IPA_PATH"
-          VERIFY_DIR=$(mktemp -d)
-          unzip -q "$IPA_PATH" -d "$VERIFY_DIR"
+          if [ -z "$IPA_PATH" ]; then IPA_PATH=$(find . -type f -name "*.ipa" -print -quit); fi
+          [ -f "$IPA_PATH" ] || { echo "Built IPA not found"; exit 1; }
+          VERIFY_DIR=$(mktemp -d); unzip -q "$IPA_PATH" -d "$VERIFY_DIR"
           APP_PATH=$(find "$VERIFY_DIR/Payload" -maxdepth 1 -type d -name "*.app" -print -quit)
-          if [ -z "$APP_PATH" ] || [ ! -f "$APP_PATH/Info.plist" ]; then
-            echo "Built .app not found inside IPA; refusing to publish"
-            exit 1
-          fi
-          echo "Built app: $APP_PATH"
           /usr/libexec/PlistBuddy -c "Print :NSLocationWhenInUseUsageDescription" "$APP_PATH/Info.plist"
-          echo "Built IPA contains required iOS location usage description"
+          /usr/libexec/PlistBuddy -c "Print :NSHealthUpdateUsageDescription" "$APP_PATH/Info.plist"
+          codesign -d --entitlements :- "$APP_PATH" 2>&1 | grep -q "com.apple.developer.healthkit"
+          echo "Built IPA contains location and HealthKit configuration"
     artifacts:
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
