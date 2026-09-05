@@ -1,7 +1,8 @@
 (()=>{
  const key=s=>String(s||'').trim().toLowerCase();
  let savedY=0,opening=false;
- const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ document.querySelector('#trailTemplate .focusDetailsBtn')?.classList.add('detailsBtn');
+ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[c]));
  const findTrail=name=>{try{return (typeof trails!=='undefined'?trails:[]).find(t=>key(t.name)===key(name))||null}catch{return null}};
  const pavedNames=['Chattahoochee RiverWalk','Columbus Fall Line Trace','Man O\' War Trail','Silver Comet Trail'];
  function selectedDate(){return document.getElementById('daySelect')?.value||new Date().toISOString().slice(0,10)}
