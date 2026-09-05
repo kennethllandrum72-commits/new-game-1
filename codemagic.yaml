@@ -96,16 +96,14 @@ workflows:
           grep -n "TrailRideHealthPlugin.swift in Sources" ios/App/App.xcodeproj/project.pbxproj
           grep -n "com.apple.developer.healthkit" ios/App/App/App.entitlements
           echo "Release location and HealthKit paths verified"
-      - name: Refresh Apple signing files
+      - name: Refresh Apple provisioning profile
         script: |
           set -e
-          keychain initialize
           mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
           rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/"*.mobileprovision || true
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_APP_STORE \
             --create
-          keychain add-certificates
           echo "Fetched current App Store provisioning profile from Apple"
       - name: Set up iOS code signing
         script: |
