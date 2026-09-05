@@ -99,12 +99,17 @@ workflows:
       - name: Refresh Apple provisioning profile
         script: |
           set -e
-          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
-          rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/"*.mobileprovision || true
-          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+          PROFILE_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
+          mkdir -p "$PROFILE_DIR"
+          rm -f "$PROFILE_DIR/"*.mobileprovision || true
+          app-store-connect profiles list \
             --type IOS_APP_STORE \
-            --create
-          echo "Fetched current App Store provisioning profile from Apple"
+            --state ACTIVE \
+            --name "TrailRide App Store" \
+            --profiles-dir "$PROFILE_DIR" \
+            --save
+          test -n "$(find "$PROFILE_DIR" -name '*.mobileprovision' -print -quit)"
+          echo "Fetched active TrailRide App Store provisioning profile from Apple"
       - name: Set up iOS code signing
         script: |
           xcode-project use-profiles --project "$XCODE_WORKSPACE" --archive-method app-store --custom-export-options='{"testFlightInternalTestingOnly": true}' --code-signing-setup-verbose-logging
