@@ -5,9 +5,10 @@
   "description": "Native iOS wrapper for TrailRide",
   "scripts": {
     "prepare:web": "node scripts/prepare-web.mjs",
-    "ios:add": "npm run prepare:web && npx cap add ios && node scripts/configure-ios-background-location.mjs",
-    "ios:sync": "npm run prepare:web && npx cap sync ios && node scripts/configure-ios-background-location.mjs",
-    "ios:open": "npx cap open ios"
+    "ios:add": "npm run prepare:web && npx cap add ios && npm run configure:ios",
+    "ios:sync": "npm run prepare:web && npx cap sync ios && npm run configure:ios",
+    "ios:open": "npx cap open ios",
+    "configure:ios": "node scripts/configure-ios-background-location.mjs && node scripts/configure-native-corelocation.mjs && node scripts/configure-healthkit.mjs"
   },
   "dependencies": {
     "@capacitor/app": "^8.1.1",
