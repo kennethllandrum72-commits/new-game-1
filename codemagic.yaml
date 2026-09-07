@@ -112,7 +112,7 @@ workflows:
           echo "Fetched active TrailRide App Store provisioning profile from Apple"
       - name: Set up iOS code signing
         script: |
-          xcode-project use-profiles --project "$XCODE_WORKSPACE" --archive-method app-store --custom-export-options='{"testFlightInternalTestingOnly": true}' --code-signing-setup-verbose-logging
+          xcode-project use-profiles --project "$XCODE_WORKSPACE" --archive-method app-store --custom-export-options='{"testFlightInternalTestingOnly": false}' --code-signing-setup-verbose-logging
       - name: Build IPA
         script: |
           xcode-project build-ipa --project "$XCODE_WORKSPACE" --scheme "$XCODE_SCHEME"
