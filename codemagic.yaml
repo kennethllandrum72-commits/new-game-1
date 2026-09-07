@@ -28,6 +28,7 @@ workflows:
           node scripts/configure-ios-background-location.mjs
           node scripts/configure-native-corelocation.mjs
           node scripts/configure-healthkit.mjs
+          node scripts/configure-app-icon.mjs
       - name: Verify native configuration
         script: |
           set -e
@@ -83,6 +84,7 @@ workflows:
           node scripts/configure-ios-background-location.mjs
           node scripts/configure-native-corelocation.mjs
           node scripts/configure-healthkit.mjs
+          node scripts/configure-app-icon.mjs
           BUILD_NUM="${BUILD_NUMBER:-2}"
           sed -i '' -E "s/CURRENT_PROJECT_VERSION = [0-9]+;/CURRENT_PROJECT_VERSION = ${BUILD_NUM};/g" ios/App/App.xcodeproj/project.pbxproj
       - name: Verify release configuration
