@@ -35,8 +35,21 @@ jobs:
       - name: Generate iOS project
         run: npx cap add ios
 
-      - name: Sync Capacitor
-        run: npx cap sync ios
+      - name: Sync Capacitor and native capabilities
+        run: |
+          npx cap sync ios
+          npm run configure:ios
+
+      - name: Verify App Store permissions and capabilities
+        run: |
+          /usr/libexec/PlistBuddy -c "Print :NSLocationWhenInUseUsageDescription" ios/App/App/Info.plist
+          /usr/libexec/PlistBuddy -c "Print :NSHealthShareUsageDescription" ios/App/App/Info.plist
+          /usr/libexec/PlistBuddy -c "Print :NSHealthUpdateUsageDescription" ios/App/App/Info.plist
+          ! /usr/libexec/PlistBuddy -c "Print :NSLocationAlwaysAndWhenInUseUsageDescription" ios/App/App/Info.plist
+          ! /usr/libexec/PlistBuddy -c "Print :UIBackgroundModes" ios/App/App/Info.plist
+          grep -q "TrailRideLocationPlugin.swift in Sources" ios/App/App.xcodeproj/project.pbxproj
+          grep -q "TrailRideHealthPlugin.swift in Sources" ios/App/App.xcodeproj/project.pbxproj
+          grep -q "com.apple.developer.healthkit" ios/App/App/App.entitlements
 
       - name: Show Xcode version
         run: xcodebuild -version
