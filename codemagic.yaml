@@ -64,6 +64,7 @@ workflows:
         bundle_identifier: com.trailride.nearme
       vars:
         BUNDLE_ID: com.trailride.nearme
+        APP_VERSION: 1.0.1
         XCODE_WORKSPACE: trailride-native/ios/App/App.xcodeproj
         XCODE_SCHEME: App
     scripts:
@@ -86,6 +87,7 @@ workflows:
           node scripts/configure-healthkit.mjs
           node scripts/configure-app-icon.mjs
           BUILD_NUM="${BUILD_NUMBER:-2}"
+          sed -i '' -E "s/MARKETING_VERSION = [^;]+;/MARKETING_VERSION = ${APP_VERSION};/g" ios/App/App.xcodeproj/project.pbxproj
           sed -i '' -E "s/CURRENT_PROJECT_VERSION = [0-9]+;/CURRENT_PROJECT_VERSION = ${BUILD_NUM};/g" ios/App/App.xcodeproj/project.pbxproj
       - name: Verify release configuration
         script: |
