@@ -13,20 +13,24 @@
  ];
  function activity(){return window.TrailRideActivity?.current?.()||localStorage.getItem('trailride-activity')||'cycling'}
  function stateSeeds(state){return planningTrails.filter(t=>t.state===state)}
+ function verifiedTrails(){return Array.isArray(window.TrailRideVerifiedTrails)?window.TrailRideVerifiedTrails:[]}
  function baseTrails(){
-  const state=document.getElementById('stateSelect')?.value||'Georgia',a=activity();
-  let base=mode==='near'?[...curated,...planningTrails]:[...curated.filter(t=>t.state===state),...stateSeeds(state)];
+  const state=document.getElementById('stateSelect')?.value||'Georgia',a=activity(),verified=verifiedTrails();
+  let base=mode==='near'?[...curated,...planningTrails,...verified]:[...curated.filter(t=>t.state===state),...stateSeeds(state),...verified.filter(t=>t.state===state)];
   if(a==='hiking')base=[...base,...hikingOnly.filter(t=>mode==='near'||t.state===state)];
-  const seen=new Set();return base.filter(t=>{let k=t.name.toLowerCase();if(seen.has(k))return false;seen.add(k);return true});
+  const seen=new Set();return base.filter(t=>{let k=String(t.name||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();if(!k||seen.has(k))return false;seen.add(k);return true});
  }
  function showBase(){trails=baseTrails();populateTrails();render();window.TrailRideActivity?.apply?.()}
  function queryParts(a,scope){
   const around=scope?`(around:${scope.radius},${loc.lat},${loc.lon})`:'(area.a)';
-  if(a==='hiking')return `relation${around}[route=hiking];relation${around}[route=foot];way${around}[highway=path][name];way${around}[highway=footway][name];`;
-  if(a==='walking'||a==='jogging'||a==='running')return `relation${around}[route=foot];relation${around}[route=hiking];way${around}[highway=footway][name];way${around}[highway=pedestrian][name];way${around}[highway=cycleway][name];`;
-  return `relation${around}[route=mtb];way${around}[route=mtb];node${around}[sport=mountain_biking];way${around}[sport=mountain_biking];relation${around}[route=bicycle];way${around}[highway=cycleway][name];`;
+  if(a==='hiking')return `relation${around}[route=hiking][name];relation${around}[route=foot][name];way${around}[highway=path][name];way${around}[highway=footway][name];way${around}[highway=track][name];`;
+  if(a==='walking'||a==='jogging'||a==='running')return `relation${around}[route=foot][name];relation${around}[route=hiking][name];way${around}[highway=footway][name];way${around}[highway=pedestrian][name];way${around}[highway=path][name];way${around}[highway=cycleway][name];`;
+  if(!scope)return `relation${around}[route=mtb][name];node${around}[sport=mountain_biking][name];way${around}[sport=mountain_biking][name];relation${around}[sport=mountain_biking][name];relation${around}[route=bicycle][name];way${around}[highway=cycleway][name];way${around}[mtb:scale][name];`;
+  return `relation${around}[route~="^(mtb|bicycle)$"][name];node${around}[sport=mountain_biking][name];way${around}[sport=mountain_biking][name];relation${around}[sport=mountain_biking][name];way${around}[highway~="^(path|track|cycleway|footway|bridleway)$"][name][bicycle~="^(yes|designated|permissive)$"];way${around}[highway~="^(path|track|cycleway|bridleway)$"][name][mtb:scale];way${around}[highway=cycleway][name];`;
  }
  function radiusMeters(){let rv=document.getElementById('radius')?.value||'120';if(rv==='all')return 320000;const milesByMinutes={15:15,30:30,60:60,120:120};return Math.round((milesByMinutes[rv]||120)*1609.34)}
+ let searchAnchor=null;
+ const OVERPASS_ENDPOINTS=['https://overpass.private.coffee/api/interpreter','https://overpass-api.de/api/interpreter'];
  async function geocodePlace(text){
   const state=document.getElementById('stateSelect')?.value,tail=state&&state!=='near'?`, ${state}, USA`:', USA';
   try{let u=`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(text+tail)}`,r=await fetch(u,{headers:{'Accept':'application/json'}}),j=await r.json();if(j[0])return{lat:+j[0].lat,lon:+j[0].lon,label:j[0].display_name}}catch{}return null
@@ -34,34 +38,47 @@
  async function searchPlace(text){
   const msg=document.getElementById('locationText');if(msg)msg.textContent=`Finding ${text}…`;
   const place=await geocodePlace(text);if(!place){if(msg)msg.textContent=`Could not locate “${text}”. Try city + state.`;return}
+  const first=String(place.label||text).split(',')[0].trim(),trailLike=/trail|greenway|park|preserve|path|nature center|bike/i.test(`${text} ${first}`);
+  searchAnchor=trailLike?{name:first||text,city:'',state:'Nearby',mi:null,d:['beginner','intermediate'],type:'Mapped trail location',lat:place.lat,lon:place.lon,status:`https://www.google.com/search?q=${encodeURIComponent((first||text)+' trail status')}`} : null;
   loc={lat:place.lat,lon:place.lon};mode='near';searchText='';trailData.clear();
   if(msg)msg.textContent=`${text}: finding trails within the selected drive radius…`;
   showBase();await Promise.race([loadArea(),sleep(6000)]).catch(()=>{});render();window.TrailRideActivity?.apply?.();await overpassSafe(text)
  }
+ async function requestOverpass(q,isState){
+  let lastError=null;
+  for(const endpoint of OVERPASS_ENDPOINTS){
+   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),isState?22000:16000);
+   try{
+    const r=await fetch(endpoint,{method:'POST',body:q,headers:{Accept:'application/json'},signal:controller.signal});
+    if(!r.ok)throw new Error(`trail server ${r.status}`);
+    const j=await r.json();if(!Array.isArray(j.elements))throw new Error('invalid trail response');return j;
+   }catch(e){lastError=e}finally{clearTimeout(timer)}
+  }
+  throw lastError||new Error('live trail servers unavailable');
+ }
  async function overpassSafe(placeLabel=''){
   const selected=document.getElementById('stateSelect')?.value||'Georgia',a=activity();let q,isState=mode==='state';
-  if(isState)q=`[out:json][timeout:25];area["name"="${selected}"]["boundary"="administrative"]["admin_level"="4"]->.a;(${queryParts(a,null)});out center tags 250;`;
-  else q=`[out:json][timeout:20];(${queryParts(a,{radius:radiusMeters()})});out center tags 250;`;
-  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),isState?18000:14000);
+  if(isState)q=`[out:json][timeout:28];area["name"="${selected}"]["boundary"="administrative"]["admin_level"="4"]->.a;(${queryParts(a,null)});out center tags 1200;`;
+  else q=`[out:json][timeout:22];(${queryParts(a,{radius:radiusMeters()})});out center tags 1200;`;
   try{
-    const r=await fetch('https://overpass-api.de/api/interpreter',{method:'POST',body:q,signal:controller.signal});if(!r.ok)throw new Error('trail search failed');
-    const j=await r.json();
-    const found=(j.elements||[]).map(e=>{const lat=e.lat||e.center?.lat,lon=e.lon||e.center?.lon,name=e.tags?.name||e.tags?.['mtb:name'];if(!lat||!lon||!name)return null;let type='Trail';if(e.tags?.route==='bicycle'||e.tags?.highway==='cycleway')type='Paved / multi-use';else if(e.tags?.route==='hiking'||e.tags?.route==='foot'||e.tags?.highway==='footway'||e.tags?.highway==='path')type='Walking / hiking';else if(e.tags?.route==='mtb'||e.tags?.sport==='mountain_biking')type='Mountain bike';const km=parseFloat(e.tags?.distance);return{name,city:e.tags?.['addr:city']||e.tags?.city||e.tags?.locality||'',state:isState?selected:'Nearby',mi:Number.isFinite(km)?+(km*.621371).toFixed(1):null,d:diff(e.tags),type,lat,lon,status:e.tags?.website||`https://www.google.com/search?q=${encodeURIComponent(name+' trail status')}`}}).filter(Boolean);
-    let base=baseTrails();if(!isState){const max=radiusMeters()/1609.34;base=base.filter(t=>miles(loc.lat,loc.lon,t.lat,t.lon)<=max)}
-    const seen=new Set(base.map(x=>x.name.toLowerCase()));trails=[...base,...found.filter(x=>{const k=x.name.toLowerCase();if(seen.has(k))return false;seen.add(k);return true})];populateTrails();render();window.TrailRideActivity?.apply?.();
-    const txt=document.getElementById('locationText');if(txt)txt.textContent=isState?`${selected}: ${trails.length} planning trails loaded.`:`${placeLabel||'Selected area'}: ${trails.length} trails within about ${document.getElementById('radius')?.selectedOptions?.[0]?.text||'selected radius'}.`;
+    const j=await requestOverpass(q,isState);
+    const found=(j.elements||[]).map(e=>{const lat=e.lat||e.center?.lat,lon=e.lon||e.center?.lon,name=e.tags?.name||e.tags?.['mtb:name'];if(!lat||!lon||!name)return null;let type='Trail';if(e.tags?.route==='bicycle'||e.tags?.highway==='cycleway')type='Bike / multi-use';else if(e.tags?.route==='hiking'||e.tags?.route==='foot'||e.tags?.highway==='footway')type='Walking / hiking';else if(e.tags?.route==='mtb'||e.tags?.sport==='mountain_biking'||e.tags?.['mtb:scale']!=null)type='Mountain bike';const km=parseFloat(e.tags?.distance);return{name,city:e.tags?.['addr:city']||e.tags?.city||e.tags?.locality||e.tags?.['is_in:city']||'',state:isState?selected:'Nearby',mi:Number.isFinite(km)?+(km*.621371).toFixed(1):null,d:diff(e.tags),type,lat:+lat,lon:+lon,status:e.tags?.website||e.tags?.url||`https://www.google.com/search?q=${encodeURIComponent(name+' trail status')}`}}).filter(Boolean);
+    let base=baseTrails();if(searchAnchor&&!isState)base=[searchAnchor,...base];if(!isState){const max=radiusMeters()/1609.34;base=base.filter(t=>miles(loc.lat,loc.lon,t.lat,t.lon)<=max)}
+    const seen=new Set(base.map(x=>String(x.name||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim()));trails=[...base,...found.filter(x=>{const k=String(x.name||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();if(!k||seen.has(k))return false;seen.add(k);return true})];populateTrails();render();window.TrailRideActivity?.apply?.();
+    const txt=document.getElementById('locationText'),liveCount=Math.max(0,trails.length-base.length);if(txt)txt.textContent=isState?`${selected}: ${trails.length} trails loaded (${liveCount} live map results).`:`${placeLabel||'Selected area'}: ${trails.length} trails loaded (${liveCount} live map results) within about ${document.getElementById('radius')?.selectedOptions?.[0]?.text||'selected radius'}.`;
   }catch(e){
-    let base=baseTrails();if(!isState){const max=radiusMeters()/1609.34;base=base.filter(t=>miles(loc.lat,loc.lon,t.lat,t.lon)<=max)}trails=base;populateTrails();render();window.TrailRideActivity?.apply?.();
-    const txt=document.getElementById('locationText');if(txt)txt.textContent=isState?`${selected}: showing saved planning trails; live search can be retried.`:`${placeLabel||'Selected area'}: showing saved trails in the selected radius; live search can be retried.`
-  }finally{clearTimeout(timer)}
+    let base=baseTrails();if(searchAnchor&&!isState)base=[searchAnchor,...base];if(!isState){const max=radiusMeters()/1609.34;base=base.filter(t=>miles(loc.lat,loc.lon,t.lat,t.lon)<=max)}trails=base;populateTrails();render();window.TrailRideActivity?.apply?.();
+    const txt=document.getElementById('locationText');if(txt)txt.textContent=isState?`${selected}: live trail servers are unavailable; showing ${trails.length} verified and saved trails. Tap Refresh to retry.`:`${placeLabel||'Selected area'}: live trail servers are unavailable; showing ${trails.length} verified and saved trails in the selected radius. Tap Search to retry.`
+  }
  }
  discover=async function(){showBase();await overpassSafe()};
  refresh=async function(){trailData.clear();showBase();await Promise.race([loadArea(),sleep(6000)]).catch(()=>{});render();window.TrailRideActivity?.apply?.();overpassSafe()};
- chooseState=async function(){const state=document.getElementById('stateSelect')?.value;if(state==='near')return;mode='state';searchText='';trailData.clear();const q=document.getElementById('trailSearch');if(q)q.value='';showBase();const txt=document.getElementById('locationText');if(txt)txt.textContent=`${state}: showing planning trails while live data loads…`;await Promise.race([geocodeState(state),sleep(3500)]).catch(()=>{});await Promise.race([loadArea(),sleep(6000)]).catch(()=>{});render();window.TrailRideActivity?.apply?.();overpassSafe()};
+ chooseState=async function(){searchAnchor=null;const state=document.getElementById('stateSelect')?.value;if(state==='near')return;mode='state';searchText='';trailData.clear();const q=document.getElementById('trailSearch');if(q)q.value='';showBase();const txt=document.getElementById('locationText');if(txt)txt.textContent=`${state}: showing planning trails while live data loads…`;await Promise.race([geocodeState(state),sleep(3500)]).catch(()=>{});await Promise.race([loadArea(),sleep(6000)]).catch(()=>{});render();window.TrailRideActivity?.apply?.();overpassSafe()};
  function installPlaceSearch(){
   const btn=document.getElementById('searchBtn'),input=document.getElementById('trailSearch');if(!btn||!input||btn.dataset.placeSearch)return;btn.dataset.placeSearch='1';
-  const go=e=>{const text=input.value.trim();if(!text)return;e?.preventDefault?.();e?.stopImmediatePropagation?.();searchPlace(text)};
-  btn.addEventListener('click',go,true);input.addEventListener('keydown',e=>{if(e.key==='Enter')go(e)},true);
+  btn.onclick=null;input.onkeydown=null;
+  const go=e=>{const text=input.value.trim();if(!text)return;e?.preventDefault?.();searchPlace(text)};
+  btn.addEventListener('click',go);input.addEventListener('keydown',e=>{if(e.key==='Enter')go(e)});
  }
  window.addEventListener('trailride:activitychange',()=>{try{refresh()}catch(e){showBase()}});
  setTimeout(()=>{installPlaceSearch();try{if(mode==='state')chooseState();else refresh()}catch(e){showBase()}},120);
