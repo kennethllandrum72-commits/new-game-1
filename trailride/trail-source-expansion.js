@@ -18,6 +18,7 @@
   {name:'Enterprise South Nature Park',city:'Chattanooga',state:'Tennessee',mi:15,d:['beginner','intermediate'],type:'Mountain bike / multi-use',lat:35.0878,lon:-85.1767,status:'https://www.google.com/search?q=Enterprise+South+Nature+Park+mountain+bike'},
   {name:'Wolf River Greenway',city:'Memphis',state:'Tennessee',mi:26,d:['beginner'],type:'Paved multi-use / greenway',lat:35.1259,lon:-89.8418,status:'https://www.google.com/search?q=Wolf+River+Greenway+Memphis'}
  ];
+ window.TrailRideVerifiedTrails=extra;
  const key=s=>String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
  function selectedState(){return document.getElementById('stateSelect')?.value||''}
  function merge(){if(!Array.isArray(window.trails)&&typeof trails==='undefined')return;let arr=typeof trails!=='undefined'?trails:window.trails,st=selectedState(),seen=new Set(arr.map(t=>key(t.name)));for(const t of extra){if(st!=='near'&&st&&t.state!==st)continue;if(!seen.has(key(t.name))){arr.push({...t,source:'TrailRide verified'});seen.add(key(t.name))}}try{populateTrails?.()}catch{}}
@@ -70,5 +71,5 @@
   btn.dataset.liveTrailSearch='1';btn.onclick=runLiveSearch;input.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();runLiveSearch()}};
  }
  function labelSources(){let box=document.querySelector('.sectionHead .eyebrow');if(box&&/nearby trails|multi-source trail discovery/i.test(box.textContent))box.textContent='MULTI-SOURCE TRAIL DISCOVERY'}
- broadenOverpass();document.readyState==='loading'?document.addEventListener('DOMContentLoaded',()=>{merge();labelSources();installLiveSearch()}):setTimeout(()=>{merge();labelSources();installLiveSearch()},0);window.addEventListener('trailride:activitychange',merge);setInterval(merge,3000);
+ broadenOverpass();document.readyState==='loading'?document.addEventListener('DOMContentLoaded',()=>{merge();labelSources()}):setTimeout(()=>{merge();labelSources()},0);window.addEventListener('trailride:activitychange',merge);setInterval(merge,3000);
 })();
